@@ -80,46 +80,56 @@ function formatarCardPedido(pedido, status, remoto) {
     const st = String(status || pedido?.status || 'PENDENTE').toUpperCase()
 
     const linhas = [
-        '🛒 *PEDIDO DE MB*',
-        '────────────────────────',
-        `🧾 ID: *${id}*`,
-        `📱 Cliente: *${cliente}*`,
-        `📦 Quantidade: *${pacote}*`
+        '⚡ *FASTNET AUTO | PEDIDO*',
+        '┌────────────────────────',
+        `│ 🧾 ID: *${id}*`,
+        `│ 📱 Destino: *${cliente}*`,
+        `│ 📦 Quantidade: *${pacote}*`
     ]
 
     if (valorNum > 0) {
-        linhas.push(`💰 Valor: *${valorNum} MT*`)
+        linhas.push(`│ 💰 Valor: *${valorNum} MT*`)
     }
     if (chip) {
-        linhas.push(`📶 Chip: *${chip}*`)
+        linhas.push(`│ 📶 Linha: *${chip}*`)
+    }
+    if (pedido?.referenciaRecibo) {
+        linhas.push(`│ 📋 Recibo: *${pedido.referenciaRecibo}*`)
     }
 
-    linhas.push('────────────────────────')
+    linhas.push('└────────────────────────')
+
+    const duracaoMs = Date.now() - (pedido?.criadoEm || Date.now())
+    const duracaoSeg = Math.max(1, Math.round(duracaoMs / 1000))
+    const tempoTexto = duracaoSeg < 60 ? `${duracaoSeg}s` : `${Math.floor(duracaoSeg / 60)}m ${duracaoSeg % 60}s`
 
     if (st === 'PENDENTE') {
-        linhas.push('⏳ *Estado:* Aguardando processamento')
+        linhas.push('⏳ *Progresso:* [■□□□□] Na fila...')
     } else if (st === 'PROCESSANDO') {
-        linhas.push('🔄 *Estado:* Em processamento')
+        linhas.push('🔄 *Progresso:* [■■■□□] Discando USSD no celular...')
     } else if (st === 'SUCESSO' || st === 'CONCLUIDO') {
-        linhas.push('✅ *Estado:* Finalizado com sucesso!')
+        linhas.push(`✅ *Progresso:* [■■■■■] Entregue (${tempoTexto})!`)
         const resposta = limparTextoResposta(remoto?.ussdResponseText)
         if (resposta) {
-            linhas.push(`💬 ${resposta.slice(0, 300)}`)
+            linhas.push(`💬 _${resposta.slice(0, 300)}_`)
         } else {
-            linhas.push('💬 Transferência efectuada com sucesso')
+            linhas.push('💬 _Transferência efectuada com sucesso_')
+        }
+        if (!pedido?.isSaldo) {
+            linhas.push('', '💡 Digite *100*03# para consultar saldo.')
         }
     } else if (st === 'FALHA' || st === 'CANCELADO') {
-        linhas.push(st === 'CANCELADO' ? '❌ *Estado:* Cancelado' : '❌ *Estado:* Falha no envio')
+        linhas.push(st === 'CANCELADO' ? '❌ *Progresso:* [■■■■■] Cancelado' : '❌ *Progresso:* [■■■■■] Falha no envio')
         const motivo = limparTextoResposta(remoto?.motivoErro || remoto?.erro || remoto?.ussdResponseText)
         if (motivo) {
-            linhas.push(`💬 ${motivo.slice(0, 300)}`)
+            linhas.push(`💬 _${motivo.slice(0, 300)}_`)
         }
     } else if (st === 'EXPIRADO') {
-        linhas.push('⚠️ *Estado:* Expirado (sem resposta do app)')
+        linhas.push('⚠️ *Progresso:* [■■■■■] Expirado (sem resposta em 10m)')
     } else if (st === 'DESAPARECIDO') {
-        linhas.push('⚠️ *Estado:* Pedido removido do servidor')
+        linhas.push('⚠️ *Progresso:* [■■■■■] Pedido cancelado no servidor')
     } else {
-        linhas.push(`ℹ️ *Estado:* ${st}`)
+        linhas.push(`ℹ️ *Progresso:* ${st}`)
     }
 
     return linhas.join('\n')
