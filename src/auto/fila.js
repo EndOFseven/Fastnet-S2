@@ -112,7 +112,9 @@ async function enfileirar(dados) {
         referenciaRecibo: pedido.referenciaRecibo,
         criadoEm: agora,
         atualizadoEm: agora,
-        notificacoes: {}
+        notificacoes: {},
+        msgKey: dados.msgKey || null,
+        msgId: dados.msgKey?.id || null
     }
     salvarPedidos(pedidos)
     return { ok: true, pedido: pedidos[id] }

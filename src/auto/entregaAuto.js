@@ -1,6 +1,7 @@
 const { obterVinculo } = require('./vinculo')
-const { enfileirar, listarTodos, STATUS_ATIVOS, normalizarTelefone } = require('./fila')
+const { enfileirar, listarTodos, STATUS_ATIVOS, normalizarTelefone, atualizarPedido, marcarNotificado } = require('./fila')
 const { fetchFirebase } = require('../utils/firebaseConfig')
+const { formatarCardPedido } = require('./monitor')
 
 async function obterMelhorSlotParaEntrega(centralCode, mb, isSaldo) {
     try {
@@ -67,7 +68,7 @@ function jaEnfileirado(referencia, numero) {
     )
 }
 
-async function enfileirarEntregas({ from, sender, pedidos, codigo, nome, valorTotal, tipoPacote, ussdMethod }) {
+async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, valorTotal, tipoPacote, ussdMethod }) {
     const vinculo = obterVinculo(from)
     if (!vinculo.centralCode || !vinculo.autoAtivo) {
         return { ok: false, motivo: 'grupo-sem-central', resultados: [] }
@@ -106,6 +107,24 @@ async function enfileirarEntregas({ from, sender, pedidos, codigo, nome, valorTo
             referenciaRecibo: codigo || '',
             clienteNome: nome || ''
         })
+
+        if (res.ok && res.pedido && sock && from) {
+            try {
+                const cardTxt = formatarCardPedido(res.pedido, 'PENDENTE', null)
+                const sent = await sock.sendMessage(from, { text: cardTxt })
+                if (sent && sent.key) {
+                    atualizarPedido(res.pedido.id, {
+                        msgKey: sent.key,
+                        msgId: sent.key.id
+                    })
+                    marcarNotificado(res.pedido.id, 'pendente')
+                    res.pedido.msgKey = sent.key
+                    res.pedido.msgId = sent.key.id
+                }
+            } catch (errCard) {
+                console.warn('[AUTO-ENTREGA] Falha ao enviar card inicial do pedido:', errCard.message)
+            }
+        }
 
         resultados.push({
             numero: item.numero,

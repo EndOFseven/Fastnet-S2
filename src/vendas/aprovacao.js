@@ -79,6 +79,7 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             guardarEntregas(pendente, pedidos)
             try {
                 autoEntrega = await enfileirarEntregas({
+                    sock,
                     from: pendente.grupoId,
                     sender: pendente.clienteId,
                     pedidos,

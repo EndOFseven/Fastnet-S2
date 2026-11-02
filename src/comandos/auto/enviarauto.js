@@ -1,10 +1,11 @@
 const config = require('../../../data/config.json')
 const { isAdmin, isOwnerCheck } = require('../../utils/baileys')
 const { obterVinculo } = require('../../auto/vinculo')
-const { enfileirar, normalizarTelefone } = require('../../auto/fila')
+const { enfileirar, normalizarTelefone, atualizarPedido, marcarNotificado } = require('../../auto/fila')
 const { parseToMB } = require('../../vendas/tracker')
 const { obterTabelaMegasGrupo, buscarDadosPorPacoteNaTabela, calcularMegasPorTexto } = require('../../vendas/tabela')
 const { fetchFirebase } = require('../../utils/firebaseConfig')
+const { formatarCardPedido } = require('../../auto/monitor')
 
 function formatarPacote(mb, isSaldo, saldo) {
     if (isSaldo) return `Saldo ${saldo} MT`
@@ -288,24 +289,22 @@ async function enviarAutoHandler(sock, msg, from, sender, text) {
     }
 
     const pedido = resultado.pedido
-    const valorTexto = valorPago > 0 ? `${valorPago} MT` : 'não indicado'
-    const msgOk = [
-        '🤖 *PEDIDO REGISTADO* ',
-        '',
-        `🧾  ID: *${pedido.id}*`,
-        `📱  Cliente: *${telefone}*`,
-        `📦  Pacote: *${formatarPacote(megas, isSaldo, saldo)}*`,
-        `📶  Chip: *${decisaoSim?.nome || 'Auto'}*`,
-        `💰  Valor: *${valorTexto}*`,
-        `📡  Servidor: *${vinculo.centralCode}*`,
-        '',
-        '⏳ _Aguardando o app processar..._',
-        `📋  Veja o andamento em *${prefix}fila*`,
-        '──────────────────'
-    ].join('\n')
+    const cardTexto = formatarCardPedido(pedido, 'PENDENTE', null)
 
-    await sock.sendMessage(from, { text: msgOk }, { quoted: msg })
-    try { await sock.sendMessage(from, { react: { text: '⏳', key: msg.key } }) } catch {}
+    try {
+        const sent = await sock.sendMessage(from, { text: cardTexto }, { quoted: msg })
+        if (sent && sent.key) {
+            atualizarPedido(pedido.id, {
+                msgKey: sent.key,
+                msgId: sent.key.id
+            })
+            marcarNotificado(pedido.id, 'pendente')
+        }
+        try { await sock.sendMessage(from, { react: { text: '⏳', key: msg.key } }) } catch {}
+    } catch (errSend) {
+        console.error('[ENVIARAUTO] Erro ao enviar mensagem inicial:', errSend.message)
+    }
+
     return true
 }
 

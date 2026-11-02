@@ -58,96 +58,136 @@ function formatarTelefone(numero) {
     return n
 }
 
-function textoStatus(pedido, status, remoto) {
-    const id = pedido.id
-    const cliente = formatarTelefone(pedido.clientePhone)
-    const pacote = formatarPacote(pedido)
-
-    const simDetectado = (remoto && remoto.simName) ||
+function obterNomeChip(pedido, remoto) {
+    const raw = (remoto && remoto.simName) ||
         (remoto && Number.isInteger(remoto.simSlot) ? `SIM ${remoto.simSlot + 1}` : null) ||
         (pedido && pedido.simName) ||
-        (pedido && Number.isInteger(pedido.targetSimSlot) ? `SIM ${pedido.targetSimSlot + 1}` : null)
-    const linhaSim = simDetectado ? `📶 Chip: *${simDetectado}*` : ''
-
-    if (status === 'PROCESSANDO') {
-        const linhas = [
-            '⚡ *PEDIDO EM ANDAMENTO*',
-            '────────────────────────',
-            `🧾 ID: *${id}*`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`
-        ]
-        if (linhaSim) linhas.push(linhaSim)
-        linhas.push('', '_O app acatou o pedido e já está a enviar por USSD._')
-        return linhas.join('\n')
-    }
-
-    if (status === 'SUCESSO' || status === 'CONCLUIDO') {
-        const resposta = limparTextoResposta(remoto?.ussdResponseText)
-        const linhas = [
-            '✅ *PEDIDO CONCLUÍDO COM ÊXITO*',
-            '────────────────────────',
-            `🧾 ID: *${id}*`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`
-        ]
-        if (linhaSim) linhas.push(linhaSim)
-        if (resposta) linhas.push('', `💬 ${resposta.slice(0, 300)}`)
-        return linhas.join('\n')
-    }
-
-    if (status === 'FALHA' || status === 'CANCELADO') {
-        const motivo = limparTextoResposta(remoto?.motivoErro || remoto?.erro || remoto?.ussdResponseText)
-        const linhas = [
-            '❌ *PEDIDO SEM ÊXITO*',
-            '────────────────────────',
-            `🧾 ID: *${id}*`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            `⚠️ Estado: *${status}*`
-        ]
-        if (motivo) linhas.push('', `💬 ${motivo.slice(0, 300)}`)
-        linhas.push('', '_Confira o app e envie outra vez se for preciso._')
-        return linhas.join('\n')
-    }
-
-    if (status === 'EXPIRADO') {
-        return [
-            '⚠️ *PEDIDO EXPIRADO*',
-            '────────────────────────',
-            `🧾 ID: *${id}*`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            '',
-            '_O app não aceitou o pedido dentro de 10 minutos. Confira a ligação do servidor e envie de novo._'
-        ].join('\n')
-    }
-
-    if (status === 'DESAPARECIDO') {
-        return [
-            '⚠️ *PEDIDO APAGADO NO SERVIDOR*',
-            '────────────────────────────',
-            `🧾 ID: *${id}*`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            '',
-            '_O pedido já não consta na fila do Firebase. Envie outra vez se o cliente ainda aguarda._'
-        ].join('\n')
-    }
-
-    return null
+        (pedido && Number.isInteger(pedido.targetSimSlot) ? `SIM ${pedido.targetSimSlot + 1}` : null) ||
+        (pedido && Number.isInteger(pedido.simSlot) ? `SIM ${pedido.simSlot + 1}` : null)
+    if (!raw) return null
+    const str = String(raw).trim()
+    const m = str.match(/SIM\s*[12]/i)
+    if (m) return m[0].toUpperCase()
+    return str
 }
 
-async function notificar(sock, pedido, status, remoto) {
+function formatarCardPedido(pedido, status, remoto) {
+    const id = pedido?.id || 'N/A'
+    const cliente = formatarTelefone(pedido?.clientePhone)
+    const pacote = formatarPacote(pedido || {})
+    const valorNum = Number(pedido?.valorPago || pedido?.valor) || 0
+    const chip = obterNomeChip(pedido, remoto)
+    const st = String(status || pedido?.status || 'PENDENTE').toUpperCase()
+
+    const linhas = [
+        '🛒 *PEDIDO DE MB*',
+        '────────────────────────',
+        `🧾 ID: *${id}*`,
+        `📱 Cliente: *${cliente}*`,
+        `📦 Quantidade: *${pacote}*`
+    ]
+
+    if (valorNum > 0) {
+        linhas.push(`💰 Valor: *${valorNum} MT*`)
+    }
+    if (chip) {
+        linhas.push(`📶 Chip: *${chip}*`)
+    }
+
+    linhas.push('────────────────────────')
+
+    if (st === 'PENDENTE') {
+        linhas.push('⏳ *Estado:* Aguardando processamento')
+    } else if (st === 'PROCESSANDO') {
+        linhas.push('🔄 *Estado:* Em processamento')
+    } else if (st === 'SUCESSO' || st === 'CONCLUIDO') {
+        linhas.push('✅ *Estado:* Finalizado com sucesso!')
+        const resposta = limparTextoResposta(remoto?.ussdResponseText)
+        if (resposta) {
+            linhas.push(`💬 ${resposta.slice(0, 300)}`)
+        } else {
+            linhas.push('💬 Transferência efectuada com sucesso')
+        }
+    } else if (st === 'FALHA' || st === 'CANCELADO') {
+        linhas.push(st === 'CANCELADO' ? '❌ *Estado:* Cancelado' : '❌ *Estado:* Falha no envio')
+        const motivo = limparTextoResposta(remoto?.motivoErro || remoto?.erro || remoto?.ussdResponseText)
+        if (motivo) {
+            linhas.push(`💬 ${motivo.slice(0, 300)}`)
+        }
+    } else if (st === 'EXPIRADO') {
+        linhas.push('⚠️ *Estado:* Expirado (sem resposta do app)')
+    } else if (st === 'DESAPARECIDO') {
+        linhas.push('⚠️ *Estado:* Pedido removido do servidor')
+    } else {
+        linhas.push(`ℹ️ *Estado:* ${st}`)
+    }
+
+    return linhas.join('\n')
+}
+
+async function atualizarOuEnviarCard(sock, pedido, status, remoto) {
+    if (!sock || !pedido || !pedido.grupoId) return
     const chave = String(status).toLowerCase()
     if (pedido.notificacoes && pedido.notificacoes[chave]) return
-    const texto = textoStatus(pedido, status, remoto)
-    if (!texto || !pedido.grupoId) return
-    try {
-        await sock.sendMessage(pedido.grupoId, { text: texto })
-        fila.marcarNotificado(pedido.id, chave)
-    } catch (err) {
-        console.error(`[AUTO-MONITOR] Falha ao notificar ${pedido.id} em ${pedido.grupoId}:`, err.message)
+
+    const chip = obterNomeChip(pedido, remoto)
+    if (chip && chip !== pedido.simName) {
+        fila.atualizarPedido(pedido.id, { simName: chip })
+        pedido.simName = chip
+    }
+
+    const texto = formatarCardPedido(pedido, status, remoto)
+    if (!texto) return
+
+    let editSucesso = false
+    const msgKey = pedido.msgKey
+
+    if (msgKey && msgKey.id) {
+        try {
+            await sock.sendMessage(pedido.grupoId, {
+                text: texto,
+                edit: {
+                    id: msgKey.id,
+                    remoteJid: msgKey.remoteJid || pedido.grupoId,
+                    fromMe: true
+                }
+            })
+            editSucesso = true
+            fila.marcarNotificado(pedido.id, chave)
+        } catch (errEdit) {
+            console.warn(`[AUTO-MONITOR] Falha ao editar mensagem ${msgKey.id} do pedido ${pedido.id}:`, errEdit.message)
+        }
+    }
+
+    if (!editSucesso) {
+        try {
+            const sent = await sock.sendMessage(pedido.grupoId, { text: texto })
+            if (sent && sent.key) {
+                fila.atualizarPedido(pedido.id, {
+                    msgKey: sent.key,
+                    msgId: sent.key.id
+                })
+                pedido.msgKey = sent.key
+                pedido.msgId = sent.key.id
+            }
+            fila.marcarNotificado(pedido.id, chave)
+        } catch (errSend) {
+            console.error(`[AUTO-MONITOR] Falha ao enviar card do pedido ${pedido.id}:`, errSend.message)
+            return
+        }
+    }
+
+    if (pedido.msgKey) {
+        try {
+            const stUpper = String(status).toUpperCase()
+            if (stUpper === 'SUCESSO' || stUpper === 'CONCLUIDO') {
+                await sock.sendMessage(pedido.grupoId, { react: { text: '✅', key: pedido.msgKey } })
+            } else if (stUpper === 'FALHA' || stUpper === 'CANCELADO') {
+                await sock.sendMessage(pedido.grupoId, { react: { text: '❌', key: pedido.msgKey } })
+            } else if (stUpper === 'PROCESSANDO') {
+                await sock.sendMessage(pedido.grupoId, { react: { text: '🔄', key: pedido.msgKey } })
+            }
+        } catch {}
     }
 }
 
@@ -195,20 +235,25 @@ async function executarCiclo() {
                     if (!STATUS_FINAIS.includes(pedido.status) && agora - (pedido.criadoEm || agora) > DESAPARECIDO_MS) {
                         fila.atualizarPedido(pedido.id, { status: 'DESAPARECIDO' })
                         const atualizado = fila.buscarPorId(pedido.id) || pedido
-                        await notificar(sock, atualizado, 'DESAPARECIDO', null)
+                        await atualizarOuEnviarCard(sock, atualizado, 'DESAPARECIDO', null)
                     }
                     continue
                 }
 
                 let statusRemoto = String(remoto.status || 'PENDENTE').toUpperCase()
 
-                // Se o app já corrigiu pelo VALIDAR0 no próprio aparelho, aceita como sucesso
-                if (remoto.corrigidoPor === 'VALIDAR0') {
+                // Se o app já corrigiu pelo VALIDAR0 no próprio aparelho ou foi falso erro de 0 MB, aceita como sucesso
+                if (remoto.corrigidoPor === 'VALIDAR0' || isFalsoErroMinimoZero(remoto)) {
                     statusRemoto = 'SUCESSO'
                     remoto.status = 'SUCESSO'
                 }
 
                 const pedidoAtual = fila.buscarPorId(pedido.id) || pedido
+
+                // Se o pedido ainda não enviou mensagem inicial no WhatsApp, envia agora
+                if (!pedidoAtual.msgKey && pedidoAtual.grupoId) {
+                    await atualizarOuEnviarCard(sock, pedidoAtual, pedidoAtual.status || 'PENDENTE', remoto)
+                }
 
                 if (statusRemoto !== pedidoAtual.statusRemoto) {
                     fila.atualizarPedido(pedido.id, { statusRemoto })
@@ -217,22 +262,25 @@ async function executarCiclo() {
                 if (STATUS_FINAIS.includes(statusRemoto)) {
                     if (pedidoAtual.status !== statusRemoto) {
                         fila.atualizarPedido(pedido.id, { status: statusRemoto })
+                        pedidoAtual.status = statusRemoto
                     }
-                    await notificar(sock, pedidoAtual, statusRemoto, remoto)
+                    await atualizarOuEnviarCard(sock, pedidoAtual, statusRemoto, remoto)
                     continue
                 }
 
                 if (statusRemoto === 'PROCESSANDO') {
                     if (pedidoAtual.status !== 'PROCESSANDO') {
                         fila.atualizarPedido(pedido.id, { status: 'PROCESSANDO' })
+                        pedidoAtual.status = 'PROCESSANDO'
                     }
-                    await notificar(sock, pedidoAtual, 'PROCESSANDO', remoto)
+                    await atualizarOuEnviarCard(sock, pedidoAtual, 'PROCESSANDO', remoto)
                     continue
                 }
 
                 if (agora - (pedidoAtual.criadoEm || agora) > TIMEOUT_PENDENTE_MS && !STATUS_FINAIS.includes(pedidoAtual.status)) {
                     fila.atualizarPedido(pedido.id, { status: 'EXPIRADO' })
-                    await notificar(sock, pedidoAtual, 'EXPIRADO', remoto)
+                    pedidoAtual.status = 'EXPIRADO'
+                    await atualizarOuEnviarCard(sock, pedidoAtual, 'EXPIRADO', remoto)
                 }
             }
         }
@@ -266,5 +314,8 @@ function pararMonitor() {
 module.exports = {
     iniciarMonitor,
     pararMonitor,
-    executarCiclo
+    executarCiclo,
+    formatarCardPedido,
+    obterNomeChip,
+    atualizarOuEnviarCard
 }

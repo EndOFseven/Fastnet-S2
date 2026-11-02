@@ -2879,6 +2879,7 @@ _Números desde o início do registo_`
         let autoEntrega = { ok: false, resultados: [] }
         try {
           autoEntrega = await enfileirarEntregas({
+            sock,
             from,
             sender,
             pedidos: pedidosClientes,
@@ -3192,6 +3193,7 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
       let autoEntrega = { ok: false, resultados: [] }
       try {
         autoEntrega = await enfileirarEntregas({
+          sock,
           from,
           sender,
           pedidos: pedidosClientes,
