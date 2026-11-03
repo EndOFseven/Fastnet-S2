@@ -131,12 +131,34 @@ module.exports = async (sock, msg, from, sender, text) => {
         const masters = (await fetchFirebase('device_masters')) || {}
         const pairedDevices = (await fetchFirebase(`${raiz}/paired_devices`)) || {}
 
-        const candidatos = new Set([
+        const rawCandidatos = new Set([
             ...Object.keys(telemetria),
             ...Object.keys(sim),
             ...Object.keys(masters).filter(d => String(masters[d]).trim().toUpperCase() === codigo),
             ...Object.keys(pairedDevices)
         ])
+
+        // Deduplicar e ignorar chaves legadas/fantasmas (ex: celular_2)
+        const candidatos = []
+        const deviceIdsVistos = new Set()
+
+        // Prioriza IDs reais que constam em pairedDevices ou telemetria
+        const ordenados = Array.from(rawCandidatos).sort((a, b) => {
+            const aReal = pairedDevices[a] || telemetria[a] ? 1 : 0
+            const bReal = pairedDevices[b] || telemetria[b] ? 1 : 0
+            if (aReal !== bReal) return bReal - aReal
+            const aAlias = /^celular_\d+/i.test(a) ? 1 : 0
+            const bAlias = /^celular_\d+/i.test(b) ? 1 : 0
+            return aAlias - bAlias
+        })
+
+        for (const dev of ordenados) {
+            const realId = sim[dev]?.deviceId || telemetria[dev]?.deviceId || pairedDevices[dev]?.deviceId || dev
+            if (deviceIdsVistos.has(realId)) continue
+            if (/^celular_\d+/i.test(dev) && !pairedDevices[dev] && !telemetria[dev]) continue
+            deviceIdsVistos.add(realId)
+            candidatos.push(dev)
+        }
 
         const agora = Date.now()
         const online = []

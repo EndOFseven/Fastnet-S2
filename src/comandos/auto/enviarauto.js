@@ -51,6 +51,7 @@ async function resolverSimOtimo(centralCode, megas, isSaldo, saldo, simForcado, 
             const tel = telemetria[devId] || {}
             const papel = String(tel.papel || '').toUpperCase()
             if (papel === 'RECEBER_PAGAMENTOS') continue
+            if (/^celular_\d+/i.test(devId) && !telemetria[devId]) continue
             if (devSim && (devSim.sim1 || devSim.sim2)) {
                 dadosAparelho = devSim
                 break

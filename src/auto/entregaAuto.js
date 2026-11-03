@@ -13,6 +13,7 @@ async function obterMelhorSlotParaEntrega(centralCode, mb, isSaldo) {
         for (const [id, d] of Object.entries(simData)) {
             const tel = telemetria[id] || {}
             if (String(tel.papel || '').toUpperCase() === 'RECEBER_PAGAMENTOS') continue
+            if (/^celular_\d+/i.test(id) && !telemetria[id]) continue
             if (d && (d.sim1 || d.sim2)) {
                 dev = d
                 break
