@@ -148,6 +148,11 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             } catch {
                 try { await sock.sendMessage(pendente.grupoId, { text: linhas.join('\n') }) } catch { }
             }
+
+            if (autoEntrega.ok && autoEntrega.resultados) {
+                const { enviarCardsEntrega } = require('../auto/entregaAuto')
+                await enviarCardsEntrega(sock, pendente.grupoId, autoEntrega.resultados)
+            }
         }
 
         return { ok: true, autoEntrega, pedidosIds }

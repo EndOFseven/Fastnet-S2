@@ -79,7 +79,7 @@ function registarResultadoSlot(dev, slot, sucesso) {
 const emExecucao = new Set()
 const ESPERA_CONSULTA_MS = 60000
 const INTERVALO_POLL_MS = 5000
-const JANELA_ONLINE_MS = 15 * 60 * 1000
+const JANELA_ONLINE_MS = 6 * 60 * 60 * 1000
 
 function formatarMegas(mb) {
     const n = Number(mb) || 0
@@ -88,6 +88,20 @@ function formatarMegas(mb) {
         return (Number.isInteger(gb) ? gb : gb.toFixed(1)) + ' GB'
     }
     return Math.round(n) + ' MB'
+}
+
+function formatarLinhaSim(s, slotPresente) {
+    if (!slotPresente) return 'sem cartão'
+    if (!s || (s.megas === undefined && s.saldo === undefined)) return 'sem dados'
+    const megasSaldo = `${formatarMegas(s.megas)} · ${Number(s.saldo) || 0} MT`
+    const total = (Number(s.total) > 0) ? Number(s.total) : 10
+    const usado = Math.max(0, Number(s.usado) || 0)
+    const restante = Math.max(0, total - usado)
+    const bloqueado = Boolean(s.bloqueadoHoje || (restante === 0))
+    const statusEnvios = bloqueado
+        ? `Envios: *${usado}/${total}* feitos • *0 restantes* (⚠️ Limite diário)`
+        : `Envios: *${usado}/${total}* feitos • *${restante}* restantes`
+    return `${megasSaldo}\n   ↳ ${statusEnvios}`
 }
 
 function formatarSim(sim) {
@@ -156,7 +170,7 @@ async function listarDispositivos(raiz, codigo, forcar = false) {
         const paired = pairedDevices[dev] || {}
         const papel = String(tel.papel || paired.deviceRole || '').trim().toUpperCase()
         const visto = Date.parse(tel.atualizadoEm || sim[dev]?.atualizadoEm || '')
-        const isOnline = Boolean(visto && (agora - visto < JANELA_ONLINE_MS))
+        const isOnline = forcar ? true : Boolean(visto && (agora - visto < JANELA_ONLINE_MS))
         const modelo = tel.modelo || paired.deviceModel || ''
 
         // Celular exclusivo de pagamentos: NÃO recebe ordem USSD!
@@ -301,8 +315,8 @@ async function executarStock(sock, msg, from, codigo, forcar = false) {
         totalSaldo += (Number(s1.saldo) || 0) + (Number(s2.saldo) || 0)
 
         texto += `📱 *Disparador:* ${modelo}\n`
-        texto += slots[0] ? ` ▸ SIM 1: ${formatarSim(s1)}\n` : ' ▸ SIM 1: sem cartão\n'
-        texto += slots[1] ? ` ▸ SIM 2: ${formatarSim(s2)}\n` : ' ▸ SIM 2: sem cartão\n'
+        texto += ` ▸ SIM 1: ${formatarLinhaSim(s1, slots[0])}\n`
+        texto += ` ▸ SIM 2: ${formatarLinhaSim(s2, slots[1])}\n`
         const validades = [s1.validadeData, s2.validadeData].filter(Boolean)
         if (validades.length > 0) texto += ` 📅 Validade: ${[...new Set(validades)].join(' / ')}\n`
         const atualizado = dados.atualizadoEm

@@ -2921,6 +2921,11 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         }
         await reactMsg('⏳')
 
+        if (autoEntrega.ok && autoEntrega.resultados) {
+          const { enviarCardsEntrega } = require('../auto/entregaAuto')
+          await enviarCardsEntrega(sock, from, autoEntrega.resultados)
+        }
+
         limparSessao(sender, from)
         return
       }
@@ -3237,6 +3242,11 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         await sock.sendMessage(from, { text: respostaSistema })
       }
       await reactMsg('⏳')
+
+      if (autoEntrega.ok && autoEntrega.resultados) {
+        const { enviarCardsEntrega } = require('../auto/entregaAuto')
+        await enviarCardsEntrega(sock, from, autoEntrega.resultados)
+      }
 
       marcarReciboUsado(sessao.codigo)
       limparSessao(sender, from)

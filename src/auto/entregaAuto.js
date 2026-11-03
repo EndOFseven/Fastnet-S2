@@ -108,24 +108,6 @@ async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, v
             clienteNome: nome || ''
         })
 
-        if (res.ok && res.pedido && sock && from) {
-            try {
-                const cardTxt = formatarCardPedido(res.pedido, 'PENDENTE', null)
-                const sent = await sock.sendMessage(from, { text: cardTxt })
-                if (sent && sent.key) {
-                    atualizarPedido(res.pedido.id, {
-                        msgKey: sent.key,
-                        msgId: sent.key.id
-                    })
-                    marcarNotificado(res.pedido.id, 'pendente')
-                    res.pedido.msgKey = sent.key
-                    res.pedido.msgId = sent.key.id
-                }
-            } catch (errCard) {
-                console.warn('[AUTO-ENTREGA] Falha ao enviar card inicial do pedido:', errCard.message)
-            }
-        }
-
         resultados.push({
             numero: item.numero,
             ok: res.ok,
@@ -142,4 +124,26 @@ async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, v
     }
 }
 
-module.exports = { enfileirarEntregas }
+async function enviarCardsEntrega(sock, from, resultados) {
+    if (!sock || !from || !Array.isArray(resultados)) return
+    for (const res of resultados) {
+        if (!res.ok || !res.pedido) continue
+        try {
+            const cardTxt = formatarCardPedido(res.pedido, 'PENDENTE', null)
+            const sent = await sock.sendMessage(from, { text: cardTxt })
+            if (sent && sent.key) {
+                atualizarPedido(res.pedido.id, {
+                    msgKey: sent.key,
+                    msgId: sent.key.id
+                })
+                marcarNotificado(res.pedido.id, 'pendente')
+                res.pedido.msgKey = sent.key
+                res.pedido.msgId = sent.key.id
+            }
+        } catch (errCard) {
+            console.warn('[AUTO-ENTREGA] Falha ao enviar card inicial do pedido:', errCard.message)
+        }
+    }
+}
+
+module.exports = { enfileirarEntregas, enviarCardsEntrega }
