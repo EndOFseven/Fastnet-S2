@@ -72,7 +72,8 @@ function obterNomeChip(pedido, remoto) {
 }
 
 function formatarCardPedido(pedido, status, remoto) {
-    const id = pedido?.id || 'N/A'
+    const num = pedido?.numero || (pedido?.id ? String(pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
+    const numDisplay = `#${num}`
     const cliente = formatarTelefone(pedido?.clientePhone)
     const pacote = formatarPacote(pedido || {})
     const valorNum = Number(pedido?.valorPago || pedido?.valor) || 0
@@ -80,9 +81,9 @@ function formatarCardPedido(pedido, status, remoto) {
     const st = String(status || pedido?.status || 'PENDENTE').toUpperCase()
 
     const linhas = [
-        '⚡ *FASTNET AUTO | PEDIDO*',
+        `⚡ *FASTNET AUTO | PEDIDO ${numDisplay}*`,
         '┌────────────────────────',
-        `│ 🧾 ID: *${id}*`,
+        `│ 🧾 #PEDIDO: *${numDisplay}*`,
         `│ 📱 Destino: *${cliente}*`,
         `│ 📦 Quantidade: *${pacote}*`
     ]

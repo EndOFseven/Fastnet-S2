@@ -3,8 +3,59 @@ const path = require('path')
 const { putFirebase, patchFirebase, fetchFirebase } = require('../utils/firebaseConfig')
 
 const ARQUIVO = path.join(__dirname, '../../data/pedidosAuto.json')
+const ARQUIVO_CONTADOR = path.join(__dirname, '../../data/contadorPedidos.json')
 const STATUS_ATIVOS = ['PENDENTE', 'PROCESSANDO']
 const STATUS_FINAIS = ['SUCESSO', 'CONCLUIDO', 'FALHA', 'CANCELADO', 'EXPIRADO', 'DESAPARECIDO']
+
+function carregarContador() {
+    try {
+        const bruto = fs.readFileSync(ARQUIVO_CONTADOR, 'utf8')
+        const dados = JSON.parse(bruto)
+        return Number(dados?.ultimoNumero) || 0
+    } catch {
+        return 0
+    }
+}
+
+function salvarContador(num) {
+    try {
+        fs.mkdirSync(path.dirname(ARQUIVO_CONTADOR), { recursive: true })
+        fs.writeFileSync(ARQUIVO_CONTADOR, JSON.stringify({
+            ultimoNumero: num,
+            atualizadoEm: new Date().toISOString()
+        }, null, 2))
+    } catch (err) {
+        console.error('[CONTADOR] Erro ao salvar contador local:', err.message)
+    }
+}
+
+let contadorMemoria = null
+
+async function obterProximoNumeroPedido(centralCode) {
+    if (contadorMemoria === null) {
+        let n = carregarContador()
+        if (n === 0 && centralCode) {
+            try {
+                const fb = await fetchFirebase(`device_pairings/${centralCode}/contador_pedidos/ultimoNumero`)
+                if (Number(fb) > 0) n = Number(fb)
+            } catch {}
+        }
+        contadorMemoria = n
+    }
+
+    contadorMemoria += 1
+    const proximo = contadorMemoria
+    salvarContador(proximo)
+
+    if (centralCode) {
+        patchFirebase(`device_pairings/${centralCode}/contador_pedidos`, {
+            ultimoNumero: proximo,
+            atualizadoEm: new Date().toISOString()
+        }).catch(() => {})
+    }
+
+    return proximo
+}
 
 function carregarPedidos() {
     try {
@@ -36,12 +87,6 @@ function normalizarTelefone(raw) {
     return ''
 }
 
-function gerarIdPedido() {
-    const base = Date.now().toString(36).toUpperCase()
-    const aleatorio = Math.random().toString(36).slice(2, 5).toUpperCase()
-    return `WA-${base}${aleatorio}`
-}
-
 async function enfileirar(dados) {
     const centralCode = String(dados.centralCode || '').trim().toUpperCase()
     if (!centralCode) return { ok: false, motivo: 'Grupo sem servidor vinculado. Use o comando de vínculo primeiro.' }
@@ -56,10 +101,12 @@ async function enfileirar(dados) {
     if (isSaldo && megasAmount <= 0 && saldoAmount > 0) megasAmount = saldoAmount
     if (!isSaldo && megasAmount <= 0) return { ok: false, motivo: 'Pacote de megas inválido.' }
 
-    const id = gerarIdPedido()
+    const numero = await obterProximoNumeroPedido(centralCode)
+    const id = `PED-${numero}`
     const agora = Date.now()
     const pedido = {
         id,
+        numero,
         status: 'PENDENTE',
         clientePhone: telefone,
         megasAmount,
@@ -97,6 +144,7 @@ async function enfileirar(dados) {
     const pedidos = carregarPedidos()
     pedidos[id] = {
         id,
+        numero,
         centralCode,
         grupoId: pedido.grupoId,
         clientePhone: telefone,
@@ -140,23 +188,39 @@ function listarTodos() {
 
 function buscarPorId(id) {
     if (!id) return null
-    return carregarPedidos()[String(id).trim().toUpperCase()] || null
+    const pedidos = carregarPedidos()
+    const chave = String(id).trim().toUpperCase()
+    if (pedidos[chave]) return pedidos[chave]
+    if (pedidos[`PED-${chave}`]) return pedidos[`PED-${chave}`]
+    const num = chave.replace(/^[#PEDIDO\-_ ]+/i, '').trim()
+    if (num && pedidos[`PED-${num}`]) return pedidos[`PED-${num}`]
+    for (const p of Object.values(pedidos)) {
+        if (!p) continue
+        if (p.id === chave || p.id === `PED-${chave}`) return p
+        if (num && (String(p.numero) === num || p.id === `PED-${num}`)) return p
+    }
+    return null
 }
 
 function atualizarPedido(id, mudancas) {
     const pedidos = carregarPedidos()
-    if (!pedidos[id]) return null
-    pedidos[id] = { ...pedidos[id], ...mudancas, atualizadoEm: Date.now() }
+    let pedido = pedidos[id]
+    if (!pedido) pedido = buscarPorId(id)
+    if (!pedido || !pedido.id) return null
+    const realId = pedido.id
+    pedidos[realId] = { ...pedidos[realId], ...mudancas, atualizadoEm: Date.now() }
     salvarPedidos(pedidos)
-    return pedidos[id]
+    return pedidos[realId]
 }
 
 function marcarNotificado(id, chave) {
     const pedidos = carregarPedidos()
-    const pedido = pedidos[id]
-    if (!pedido) return
-    pedido.notificacoes = pedido.notificacoes || {}
-    pedido.notificacoes[chave] = true
+    let pedido = pedidos[id]
+    if (!pedido) pedido = buscarPorId(id)
+    if (!pedido || !pedido.id) return
+    const realId = pedido.id
+    pedidos[realId].notificacoes = pedidos[realId].notificacoes || {}
+    pedidos[realId].notificacoes[chave] = true
     salvarPedidos(pedidos)
 }
 

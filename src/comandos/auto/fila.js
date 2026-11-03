@@ -35,7 +35,8 @@ function formatarHora(ts) {
 
 function linhaPedido(pedido) {
     const icone = ICONES[pedido.status] || '•'
-    return `${icone} *${pedido.id}* • ${pedido.clientePhone} • ${formatarPacote(pedido)} • ${pedido.status} • ${formatarHora(pedido.criadoEm)}`
+    const num = pedido?.numero || (pedido?.id ? String(pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
+    return `${icone} *#${num}* • ${pedido.clientePhone} • ${formatarPacote(pedido)} • ${pedido.status} • ${formatarHora(pedido.criadoEm)}`
 }
 
 async function filaHandler(sock, msg, from, sender, text) {

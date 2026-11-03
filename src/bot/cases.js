@@ -2893,7 +2893,10 @@ _Números desde o início do registo_`
           console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
         }
         const pedidosAutoIds = autoEntrega.ok
-          ? autoEntrega.resultados.filter(r => r.ok).map(r => r.pedido.id)
+          ? autoEntrega.resultados.filter(r => r.ok).map(r => {
+              const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
+              return `#${num}`
+            })
           : []
 
         const termoEspera = autoEntrega.ok
@@ -2901,7 +2904,7 @@ _Números desde o início do registo_`
           : (isSaldoPacote ? 'A transferência será feita manualmente pelos administradores em instantes!' : 'O envio manual será feito pelos administradores em instantes!')
 
         const linhaPedidoAuto = pedidosAutoIds.length > 0
-          ? `\n🧾 *Pedido:* ${pedidosAutoIds.join(', ')}`
+          ? `\n🧾 *#PEDIDO:* ${pedidosAutoIds.join(', ')}`
           : ''
 
         const respostaSistema = `✅ *Comprovativo Aprovado!*
@@ -3212,7 +3215,10 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
       }
       const pedidosAutoIds = autoEntrega.ok
-        ? autoEntrega.resultados.filter(r => r.ok).map(r => r.pedido.id)
+        ? autoEntrega.resultados.filter(r => r.ok).map(r => {
+            const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
+            return `#${num}`
+          })
         : []
 
       const termoEspera = autoEntrega.ok
@@ -3220,7 +3226,7 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         : (isSaldoPacote ? 'A transferência será feita manualmente pelos administradores em instantes!' : 'O envio manual será feito pelos administradores em instantes!')
 
       const linhaPedidoAuto = pedidosAutoIds.length > 0
-        ? `\n🧾 *Pedido:* ${pedidosAutoIds.join(', ')}`
+        ? `\n🧾 *#PEDIDO:* ${pedidosAutoIds.join(', ')}`
         : ''
 
       const respostaSistema = `✅ *Comprovativo Aprovado!*

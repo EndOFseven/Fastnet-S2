@@ -109,7 +109,10 @@ async function aprovarPendente(sock, pendente, opts = {}) {
         }
 
         const pedidosIds = autoEntrega.ok
-            ? autoEntrega.resultados.filter(r => r.ok).map(r => r.pedido.id)
+            ? autoEntrega.resultados.filter(r => r.ok).map(r => {
+                const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
+                return `#${num}`
+            })
             : []
         const dadosTxt = pedidos.map(p => p.displayPacote || `${p.mb}MB`).join(' • ')
         const clienteJid = jidMencao(pendente.clienteId)
@@ -129,7 +132,7 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             `📋 *Recibo:* \`${pendente.codigo}\``,
             `🔎 *Fonte:* ${opts.origemLabel || 'SMS oficial da operadora'}`,
             ...(adminJid ? [`👑 *Confirmado por:* @${numeroVisivel(adminJid)}`] : []),
-            ...(pedidosIds.length > 0 ? [`🧾 *Pedido:* ${pedidosIds.join(', ')}`] : []),
+            ...(pedidosIds.length > 0 ? [`🧾 *#PEDIDO:* ${pedidosIds.join(', ')}`] : []),
             ...(semNumero
                 ? [
                     '────────────────────────',
