@@ -41,4 +41,5 @@ data/
 data/*
 !data/.gitkeep
 !data/config.example.json
+!data/config.json
 !scripts/.gitkeep

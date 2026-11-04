@@ -1,12 +1,13 @@
 {
   "prefix": ".",
   "dono": [
-    "258XXXXXXXXX"
+    "258875942284"
   ],
-  "ownerDisplayNumber": "258XXXXXXXXX",
-  "botNumber": "",
+  "ownerDisplayNumber": "258875942284",
+  "botNumber": "258858496644",
   "botName": "SEVEN BOT",
-  "ownerName": "Seu Nome",
+  "ownerName": "SEVEN",
   "canalLink": "",
-  "botaoExtra": "Sobre o bot"
+  "botaoExtra": "Sobre o bot",
+  "firebaseUrl": "https://fastnets2-default-rtdb.europe-west1.firebasedatabase.app"
 }

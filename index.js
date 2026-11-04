@@ -59,9 +59,18 @@ try {
   console.error('[CONFIG] Erro ao ler data/config.json:', e.message)
 }
 
-if (process.env.BOT_NUMBER && !config.botNumber) config.botNumber = process.env.BOT_NUMBER.replace(/\D/g, '')
-if ((process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL) && !config.firebaseUrl) {
-  config.firebaseUrl = process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL
+if (!config.botNumber || !String(config.botNumber).trim()) {
+  config.botNumber = process.env.BOT_NUMBER ? process.env.BOT_NUMBER.replace(/\D/g, '') : '258858496644'
+  try { fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8') } catch {}
+}
+if (!config.firebaseUrl || !String(config.firebaseUrl).trim() || config.firebaseUrl.includes('seu-projeto')) {
+  config.firebaseUrl = process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL || 'https://fastnets2-default-rtdb.europe-west1.firebasedatabase.app'
+  try { fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8') } catch {}
+}
+if (!config.dono || !Array.isArray(config.dono) || config.dono.length === 0 || config.dono[0] === '258XXXXXXXXX') {
+  config.dono = ['258875942284']
+  config.ownerDisplayNumber = '258875942284'
+  try { fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf8') } catch {}
 }
 
 const cases1 = require('./src/bot/cases1')
@@ -334,23 +343,23 @@ async function connectSocket() {
 
   const { state, saveCreds } = await useMultiFileAuthState(sessionFolder)
 
-  let method = '1'
-  let targetPhone = String(process.env.PAIRING_NUMBER || process.env.BOT_NUMBER || config.botNumber || '').replace(/\D/g, '')
+  let targetPhone = String(process.env.PAIRING_NUMBER || process.env.BOT_NUMBER || config.botNumber || '258858496644').replace(/\D/g, '')
   let phoneNumber = targetPhone
+  let method = targetPhone ? '2' : '1'
   const isAuthenticated = !!state.creds.registered || !!state.creds.me?.id
 
   if (!isAuthenticated) {
     if (process.stdin.isTTY) {
       console.log(`\n${CYAN}Nenhuma sessão ativa encontrada para o bot PRINCIPAL. Escolha o método de conexão:${RESET}`)
-      console.log(`1. Conectar via QR Code`)
-      console.log(`2. Conectar via Código de Pareamento (Pairing Code)`)
+      console.log(`1. Conectar via QR Code (Acesse a imagem na aba "Arquivos/qrcode.png")`)
+      console.log(`2. Conectar via Código de Pareamento (Pairing Code) [Padrão: ${phoneNumber || "nenhum"}]${RESET}`)
 
       const defaultOpt = targetPhone ? '2' : '1'
-      const opcao = await question(`\nDigite a opção desejada (1 ou 2) [Padrão ${defaultOpt}, expira em 15s]: `, 15000, defaultOpt)
-      method = (opcao.trim() === '2') ? '2' : '1'
+      const opcao = await question(`\nDigite a opção desejada (1 ou 2) [Padrão ${defaultOpt}, expira em 10s]: `, 10000, defaultOpt)
+      method = (opcao.trim() === '1') ? '1' : '2'
 
       if (method === '2') {
-        const num = await question(`\nDigite o número do bot com DDI (ex: 25887xxxxxxx) [Padrão: ${phoneNumber || "nenhum"}]: `, 15000, phoneNumber)
+        const num = await question(`\nDigite o número do bot com DDI [Padrão: ${phoneNumber || "258858496644"}]: `, 10000, phoneNumber || "258858496644")
         const numeroLimpo = num.replace(/[^0-9]/g, "")
         if (numeroLimpo) {
           phoneNumber = numeroLimpo
@@ -361,9 +370,6 @@ async function connectSocket() {
           } catch (e) {
             console.error(`Erro ao salvar número no config.json:`, e.message)
           }
-        } else if (!phoneNumber) {
-          console.log(`\n❌ Nenhum número fornecido. Alternando para o método QR Code...\n`)
-          method = '1'
         }
       }
     } else {
