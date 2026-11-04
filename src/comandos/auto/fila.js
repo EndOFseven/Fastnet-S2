@@ -1,6 +1,7 @@
 const config = require('../../../data/config.json')
 const { isAdmin, isOwnerCheck } = require('../../utils/baileys')
 const { listarPorGrupo, limparFinalizados, cancelar } = require('../../auto/fila')
+const { formatarPacoteComBonus } = require('../../vendas/primeiroBonus')
 
 const ICONES = {
     PENDENTE: '⏳',
@@ -16,6 +17,11 @@ const ICONES = {
 function formatarPacote(pedido) {
     const mb = Number(pedido.megasAmount) || 0
     if (pedido.isSaldo) return `Saldo ${pedido.saldoAmount || mb} MT`
+    const bonusMb = Number(pedido.bonusMb) || 0
+    if (bonusMb > 0) {
+        const baseMb = Number(pedido.pacoteBaseMb) || Math.max(0, mb - bonusMb)
+        return formatarPacoteComBonus(baseMb, bonusMb)
+    }
     if (mb >= 1024) return `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1).replace('.', ',')} GB`
     return `${Math.floor(mb)} MB`
 }

@@ -1,5 +1,6 @@
 const fila = require('./fila')
 const { fetchFirebase, patchFirebase } = require('../utils/firebaseConfig')
+const { formatarPacoteComBonus } = require('../vendas/primeiroBonus')
 
 const INTERVALO_MS = 8000
 const TIMEOUT_PENDENTE_MS = 10 * 60 * 1000
@@ -45,6 +46,11 @@ function limparTextoResposta(txt) {
 function formatarPacote(pedido) {
     if (pedido.isSaldo) return `Saldo ${pedido.saldoAmount || pedido.megasAmount} MT`
     const mb = Number(pedido.megasAmount) || 0
+    const bonusMb = Number(pedido.bonusMb) || 0
+    if (bonusMb > 0) {
+        const baseMb = Number(pedido.pacoteBaseMb) || Math.max(0, mb - bonusMb)
+        return formatarPacoteComBonus(baseMb, bonusMb)
+    }
     if (mb >= 1024) {
         const gb = (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1).replace('.', ',')
         return `${gb} GB`

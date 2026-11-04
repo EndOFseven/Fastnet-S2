@@ -125,6 +125,10 @@ async function enfileirar(dados) {
         solicitadoPor: dados.solicitadoPor || '',
         referenciaRecibo: dados.referenciaRecibo || '',
         clienteNome: dados.clienteNome || '',
+        bonusMb: Math.max(0, parseInt(dados.bonusMb, 10) || 0),
+        pacoteBaseMb: Math.max(0, parseInt(dados.pacoteBaseMb, 10) || 0),
+        displayPacote: dados.displayPacote || '',
+        bonusLabel: dados.bonusLabel || '',
         createdAt: agora
     }
     if (isSaldo) pedido.saldoAmount = saldoAmount
@@ -158,6 +162,10 @@ async function enfileirar(dados) {
         statusRemoto: 'PENDENTE',
         isSaldo,
         referenciaRecibo: pedido.referenciaRecibo,
+        bonusMb: pedido.bonusMb,
+        pacoteBaseMb: pedido.pacoteBaseMb,
+        displayPacote: pedido.displayPacote,
+        bonusLabel: pedido.bonusLabel,
         criadoEm: agora,
         atualizadoEm: agora,
         notificacoes: {},

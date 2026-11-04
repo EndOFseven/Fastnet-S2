@@ -58,6 +58,8 @@ module.exports = async (sock, msg, from, sender, text) => {
         `▸ ${prefix}compras`,
         `▸ ${prefix}limparcompras`,
         `▸ ${prefix}recuperarcompras`,
+        `▸ ${prefix}rank [on/off/me]`,
+        `▸ ${prefix}primeirobonus [on/off/status]`,
         `▸ ${prefix}confirmar [código]`,
         `▸ ${prefix}recusar [código]`,
         `▸ ${prefix}verificacao [modo]`,

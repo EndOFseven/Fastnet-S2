@@ -34,6 +34,7 @@ const {
 const pluginManager = require('../comandos/pluginManager')
 const { salvarSessao, getSessao, limparSessao, bufferizarNumeroCandidato, consumirNumeroCandidato } = require('../vendas/sessao')
 const { extrairNumerosEDistribuirPacotes, formatarDadosDisplay } = require('../vendas/distribuidorPacotes')
+const { montarMensagemBonus } = require('../vendas/primeiroBonus')
 const {
   calcularMegas,
   calcularMegasPorTexto,
@@ -2746,7 +2747,6 @@ _Números desde o início do registo_`
 
       let megas = pacotesDisponiveis[0]
 
-      const { extrairNumerosEDistribuirPacotes, formatarDadosDisplay } = require('../vendas/distribuidorPacotes')
       let pedidosClientes = extrairNumerosEDistribuirPacotes(body, numeroDestino, megas, valor)
       if (pedidosClientes.length === 0) {
         const candidato = consumirNumeroCandidato(sender, from)
@@ -2781,26 +2781,31 @@ _Números desde o início do registo_`
         }
 
         const { salvarEntregaPendente } = require('./entregasPendentes')
-        for (const item of pedidosClientes) {
-          const dadosEntrega = {
-            clienteId: sender,
-            clienteNome: nome,
-            numero: item.numero,
-            pacote: item.displayPacote,
-            valor: item.valor,
-            codigo: codigo,
-            grupoOrigem: from,
-            timestamp: Date.now()
+        const salvarPendentes = () => {
+          for (const item of pedidosClientes) {
+            const dadosEntrega = {
+              clienteId: sender,
+              clienteNome: nome,
+              numero: item.numero,
+              pacote: item.displayPacote,
+              pacoteMb: item.mb,
+              pacoteBaseMb: item.pacoteBaseMb || item.mb,
+              bonusMb: item.bonusMb || 0,
+              valor: item.valor,
+              codigo: codigo,
+              grupoOrigem: from,
+              timestamp: Date.now()
+            }
+            salvarEntregaPendente(item.numero, dadosEntrega)
+            if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
+            if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
+            if (sender) salvarEntregaPendente(sender, dadosEntrega)
+            if (codigo) salvarEntregaPendente(codigo, dadosEntrega)
           }
-          salvarEntregaPendente(item.numero, dadosEntrega)
-          if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
-          if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
-          if (sender) salvarEntregaPendente(sender, dadosEntrega)
-          if (codigo) salvarEntregaPendente(codigo, dadosEntrega)
         }
+        salvarPendentes()
 
         marcarReciboUsado(codigo)
-        const dadosDisplay = formatarDadosDisplay(pedidosClientes)
         const tipoPacoteStr = ((megas && megas.tipo) || '').toLowerCase()
         const isDirectSaldo = tipoPacoteStr.includes('saldo')
         const isOfertaSaldo = tipoPacoteStr.includes('semanal') ||
@@ -2837,6 +2842,9 @@ _Números desde o início do registo_`
             .join(', ')
           console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
         }
+        if (autoEntrega.ok) salvarPendentes()
+        const dadosDisplay = formatarDadosDisplay(pedidosClientes)
+        const linhasBonus = montarMensagemBonus(autoEntrega.bonus)
         const pedidosAutoIds = autoEntrega.ok
           ? autoEntrega.resultados.filter(r => r.ok).map(r => {
               const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
@@ -2857,7 +2865,7 @@ _Números desde o início do registo_`
 ──────────────────
 📢 *Referência:* *${codigo}*
 💵 *Valor:* ${valor} MT
-${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
+${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${linhasBonus.join('\n')}` : ''}
 ──────────────────
 ⏳ _${termoEspera}_`
 
@@ -3104,27 +3112,31 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
       }
 
       const { salvarEntregaPendente } = require('./entregasPendentes')
+      const salvarPendentes = () => {
+        for (const item of pedidosClientes) {
+          const dadosEntrega = {
+            clienteId: sender,
+            clienteNome: sessao.nome,
+            numero: item.numero,
+            pacote: item.displayPacote,
+            pacoteMb: item.mb,
+            pacoteBaseMb: item.pacoteBaseMb || item.mb,
+            bonusMb: item.bonusMb || 0,
+            valor: item.valor,
+            codigo: sessao.codigo,
+            grupoOrigem: from,
+            timestamp: Date.now()
+          }
 
-      for (const item of pedidosClientes) {
-        const dadosEntrega = {
-          clienteId: sender,
-          clienteNome: sessao.nome,
-          numero: item.numero,
-          pacote: item.displayPacote,
-          valor: item.valor,
-          codigo: sessao.codigo,
-          grupoOrigem: from,
-          timestamp: Date.now()
+          salvarEntregaPendente(item.numero, dadosEntrega)
+          if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
+          if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
+          if (sender) salvarEntregaPendente(sender, dadosEntrega)
+          if (sessao.codigo) salvarEntregaPendente(sessao.codigo, dadosEntrega)
         }
-
-        salvarEntregaPendente(item.numero, dadosEntrega)
-        if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
-        if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
-        if (sender) salvarEntregaPendente(sender, dadosEntrega)
-        if (sessao.codigo) salvarEntregaPendente(sessao.codigo, dadosEntrega)
       }
+      salvarPendentes()
 
-      const dadosDisplay = formatarDadosDisplay(pedidosClientes)
       const tipoPacoteStr = ((megas && megas.tipo) || '').toLowerCase()
       const isDirectSaldo = tipoPacoteStr.includes('saldo')
       const isOfertaSaldo = tipoPacoteStr.includes('semanal') ||
@@ -3165,6 +3177,9 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
           .join(', ')
         console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
       }
+      if (autoEntrega.ok) salvarPendentes()
+      const dadosDisplay = formatarDadosDisplay(pedidosClientes)
+      const linhasBonus = montarMensagemBonus(autoEntrega.bonus)
       const pedidosAutoIds = autoEntrega.ok
         ? autoEntrega.resultados.filter(r => r.ok).map(r => {
             const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
@@ -3185,7 +3200,7 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
 ──────────────────
 📢 *Referência:* *${sessao.codigo}*
 💵 *Valor:* ${sessao.valor} MT
-${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
+${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${linhasBonus.join('\n')}` : ''}
 ──────────────────
 ⏳ _${termoEspera}_`
 
@@ -3291,7 +3306,8 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         let stats = null
         try {
           const { registrarVenda } = require('../vendas/tracker')
-          stats = registrarVenda(from, pendente.clienteId, clienteNome, pacote)
+          const pacoteRegistro = pendente.pacoteMb ? `${pendente.pacoteMb}MB` : pacote
+          stats = registrarVenda(from, pendente.clienteId, clienteNome, pacoteRegistro)
         } catch (errStats) {
           console.error(`[ENTREGA] Erro ao registrar venda:`, errStats.message)
         }

@@ -4,6 +4,7 @@ const { enfileirarEntregas } = require('../auto/entregaAuto')
 const { marcarReciboUsado, finalizarProcessamentoRecibo } = require('./recibos')
 const { salvarEntregaPendente } = require('../bot/entregasPendentes')
 const { salvarSessao } = require('./sessao')
+const { montarMensagemBonus } = require('./primeiroBonus')
 
 const emAndamento = new Set()
 
@@ -37,6 +38,9 @@ function guardarEntregas(pendente, pedidos) {
             clienteNome: pendente.clienteNome,
             numero: item.numero,
             pacote: item.displayPacote,
+            pacoteMb: item.mb,
+            pacoteBaseMb: item.pacoteBaseMb || item.mb,
+            bonusMb: item.bonusMb || 0,
             valor: item.valor,
             codigo: pendente.codigo,
             grupoOrigem: pendente.grupoId,
@@ -92,6 +96,7 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             } catch (err) {
                 console.error('[APROVACAO] Falha ao enfileirar comprovativo aprovado:', err.message)
             }
+            if (autoEntrega.ok) guardarEntregas(pendente, pedidos)
         }
 
         marcarReciboUsado(pendente.codigo, {
@@ -133,6 +138,7 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             `🔎 *Fonte:* ${opts.origemLabel || 'SMS oficial da operadora'}`,
             ...(adminJid ? [`👑 *Confirmado por:* @${numeroVisivel(adminJid)}`] : []),
             ...(pedidosIds.length > 0 ? [`🧾 *#PEDIDO:* ${pedidosIds.join(', ')}`] : []),
+            ...montarMensagemBonus(autoEntrega.bonus),
             ...(semNumero
                 ? [
                     '────────────────────────',

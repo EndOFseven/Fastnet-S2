@@ -13,7 +13,7 @@ const NORMAL = [
     },
     {
         title: '📋 FERRAMENTAS & PERFIL',
-        items: [['infogp'], ['perfil']]
+        items: [['infogp'], ['perfil'], ['rank']]
     },
     {
         title: '👑 ATENDIMENTO & SUPORTE',
@@ -28,7 +28,7 @@ const ADMIN = [
     },
     {
         title: '📦 CONTROLE DE VENDAS',
-        items: [['aumentarlimite'], ['compras'], ['limparcompras'], ['recuperarcompras']]
+        items: [['aumentarlimite'], ['compras'], ['limparcompras'], ['recuperarcompras'], ['rank', '[on/off/me]'], ['primeirobonus', '[on/off/status]']]
     },
     {
         title: '🛡️ PROTEÇÃO DO GRUPO',

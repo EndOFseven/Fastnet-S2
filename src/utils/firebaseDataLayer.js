@@ -284,6 +284,13 @@ const vendasStore = createStore(
     'vendas.json',
 )
 
+const primeiroBonusStore = createStore(
+    'primeiroBonus',
+    'bot_data/primeiro_bonus',
+    'data/primeiroBonusData.json',
+    { configs: {}, grupos: {} }
+)
+
 const licencasStore = createStore(
     'licencas',
     'bot_data/licencas',
@@ -364,6 +371,7 @@ async function preloadAll() {
             nanosCmdsStore.load(),
             nanoCmdsStore.load(),
             vendasStore.load(),
+            primeiroBonusStore.load(),
             licencasStore.load(),
             contasStore.load(),
             mutesStore.load(),
@@ -389,6 +397,7 @@ async function preloadAll() {
         nanosCmdsStore.load(),
         nanoCmdsStore.load(),
         vendasStore.load(),
+        primeiroBonusStore.load(),
         licencasStore.load(),
         contasStore.load(),
         mutesStore.load(),
@@ -449,6 +458,7 @@ module.exports = {
     nanosCmdsStore,
     nanoCmdsStore,
     vendasStore,
+    primeiroBonusStore,
     licencasStore,
     manualCounterStore,
     sessoesStore,
