@@ -4,6 +4,21 @@ const { putFirebase, deleteFirebase, fetchFirebase } = require('../utils/firebas
 const LETRAS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
 const DIGITOS = '23456789'
 
+const vinculosRemotos = new Map()
+let restauracaoEmAndamento = null
+
+function registrarVinculoRemoto(grupoId, centralCode, vinculadoEm = Date.now()) {
+    if (!grupoId || !centralCode) return
+    const atual = vinculosRemotos.get(grupoId)
+    if (!atual || vinculadoEm >= atual.vinculadoEm) {
+        vinculosRemotos.set(grupoId, { centralCode, vinculadoEm })
+    }
+}
+
+function removerVinculoRemoto(grupoId) {
+    if (grupoId) vinculosRemotos.delete(grupoId)
+}
+
 function normalizarCodigo(raw) {
     const clean = String(raw || '')
         .trim()
@@ -30,6 +45,15 @@ function chaveSegura(jid) {
     return String(jid || '').replace(/[.#$/\[\]]/g, '_')
 }
 
+function normalizarGrupoId(raw) {
+    const valor = String(raw || '').trim()
+    if (!valor) return ''
+    if (valor.endsWith('@g.us')) return valor
+    if (valor.endsWith('@g___dot___us')) return valor.replace('@g___dot___us', '@g.us')
+    if (valor.endsWith('@g_us')) return valor.replace('@g_us', '@g.us')
+    return ''
+}
+
 function gerarCodigo4() {
     const todos = LETRAS + DIGITOS
     for (;;) {
@@ -43,10 +67,80 @@ function obterVinculo(from) {
     const groups = configManager.loadGroupConfig()
     const key = chaveGrupo(groups, from)
     const entry = groups[key] || {}
-    return {
-        centralCode: entry.centralCode ? normalizarCodigo(entry.centralCode) : null,
-        autoAtivo: entry.autoAtivo === true
+    let centralCode = entry.centralCode ? normalizarCodigo(entry.centralCode) : null
+    let autoAtivo = entry.autoAtivo === true
+
+    if (!centralCode) {
+        const remoto = vinculosRemotos.get(from) || vinculosRemotos.get(key)
+        if (remoto && remoto.centralCode) {
+            centralCode = normalizarCodigo(remoto.centralCode)
+            autoAtivo = true
+            groups[key] = { ...entry, centralCode, autoAtivo: true }
+            try { configManager.saveGroupConfig(true) } catch { }
+            console.log(`[VINCULO] Vínculo recuperado do Firebase para ${from}: ${centralCode}`)
+        }
     }
+
+    return { centralCode, autoAtivo }
+}
+
+async function restaurarVinculosFirebase() {
+    if (restauracaoEmAndamento) return restauracaoEmAndamento
+
+    restauracaoEmAndamento = (async () => {
+        const centrais = await fetchFirebase('device_pairings?shallow=true')
+        if (!centrais || typeof centrais !== 'object') {
+            return { ok: true, restaurados: 0 }
+        }
+
+        for (const codeRaw of Object.keys(centrais)) {
+            const code = normalizarCodigo(codeRaw)
+            if (!code) continue
+
+            let vinculados = null
+            try {
+                vinculados = await fetchFirebase(`device_pairings/${code}/grupos_vinculados`)
+            } catch {
+                vinculados = null
+            }
+            if (!vinculados || typeof vinculados !== 'object') continue
+
+            for (const registro of Object.values(vinculados)) {
+                const grupoId = normalizarGrupoId(registro && registro.grupoId)
+                if (!grupoId) continue
+                const vinculadoEm = Date.parse(registro.vinculadoEm) || 0
+                registrarVinculoRemoto(grupoId, code, vinculadoEm)
+            }
+        }
+
+        const groups = configManager.loadGroupConfig()
+        let restaurados = 0
+
+        for (const [grupoId, info] of vinculosRemotos.entries()) {
+            const key = chaveGrupo(groups, grupoId)
+            const entry = groups[key] || {}
+            const centralAtual = entry.centralCode ? normalizarCodigo(entry.centralCode) : null
+
+            if (!centralAtual) {
+                groups[key] = { ...entry, centralCode: info.centralCode, autoAtivo: true }
+                restaurados++
+            }
+        }
+
+        if (restaurados > 0) {
+            configManager.saveGroupConfig(true)
+            console.log(`[VINCULO] ${restaurados} vínculo(s) restaurado(s) do Firebase.`)
+        }
+
+        return { ok: true, restaurados }
+    })().catch(err => {
+        console.error('[VINCULO] Falha ao restaurar vínculos do Firebase:', err.message)
+        return { ok: false, restaurados: 0 }
+    }).finally(() => {
+        restauracaoEmAndamento = null
+    })
+
+    return restauracaoEmAndamento
 }
 
 async function resolverCodigo(raw) {
@@ -67,16 +161,18 @@ async function concluirVinculo(from, codigo, meta = {}) {
     groups[key].centralCode = codigo
     groups[key].autoAtivo = true
     configManager.saveGroupConfig(true)
+    registrarVinculoRemoto(key, codigo)
+    if (key !== from) registrarVinculoRemoto(from, codigo)
 
     const safeKey = chaveSegura(key)
     await putFirebase(`device_pairings/${codigo}/grupos_vinculados/${safeKey}`, {
-        grupoId: key,
+        grupoId: from,
         grupoNome: meta.grupoNome || '',
         vinculadoEm: new Date().toISOString(),
         status: 'ATIVO'
     })
     await putFirebase(`device_pairings/${codigo}/whatsapp`, {
-        grupoId: key,
+        grupoId: from,
         grupoNome: meta.grupoNome || '',
         status: 'ATIVO',
         vinculadoEm: new Date().toISOString()
@@ -95,9 +191,9 @@ async function vincular(from, codigoRaw, meta = {}) {
 
     const outrosGrupos = Object.entries(groups)
         .filter(([k, e]) => k !== key && e && String(e.centralCode || '').trim().toUpperCase() === codigo)
-    const vinculosRemotos = (await fetchFirebase(`device_pairings/${codigo}/grupos_vinculados`)) || {}
+    const vinculosFirebase = (await fetchFirebase(`device_pairings/${codigo}/grupos_vinculados`)) || {}
     const jaUsado = outrosGrupos.length > 0 ||
-        Object.keys(vinculosRemotos).some(k => k !== chaveSegura(key))
+        Object.keys(vinculosFirebase).some(k => k !== chaveSegura(key))
 
     if (jaUsado && !meta.confirmado) {
         const codigo4 = gerarCodigo4()
@@ -128,11 +224,14 @@ async function desvincular(from) {
     entry.autoAtivo = false
     groups[key] = entry
     configManager.saveGroupConfig(true)
+    removerVinculoRemoto(key)
+    removerVinculoRemoto(from)
 
     if (codigo) {
         try { await deleteFirebase(`device_pairings/${codigo}/grupos_vinculados/${chaveSegura(key)}`) } catch {}
         const registro = await fetchFirebase(`device_pairings/${codigo}/whatsapp`)
-        if (registro && registro.grupoId === key) {
+        const grupoRegistrado = normalizarGrupoId(registro && registro.grupoId)
+        if (grupoRegistrado === normalizarGrupoId(from) || grupoRegistrado === normalizarGrupoId(key)) {
             await deleteFirebase(`device_pairings/${codigo}/whatsapp`)
         }
     }
@@ -143,6 +242,9 @@ async function desvincular(from) {
 module.exports = {
     normalizarCodigo,
     obterVinculo,
+    restaurarVinculosFirebase,
+    registrarVinculoRemoto,
+    removerVinculoRemoto,
     vincular,
     concluirVinculo,
     desvincular,

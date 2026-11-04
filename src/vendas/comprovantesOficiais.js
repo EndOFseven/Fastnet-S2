@@ -38,6 +38,9 @@ function caminhosOficiais(codigo, centralCode) {
 async function buscarOficial(codigo, centralCode) {
     const alvo = normalizarCodigo(codigo)
     let semAssinatura = null
+    let valido = null
+    let usado = null
+
     for (const caminho of caminhosOficiais(codigo, centralCode)) {
         let dados = null
         try {
@@ -48,13 +51,27 @@ async function buscarOficial(codigo, centralCode) {
         if (!dados || typeof dados !== 'object') continue
         const tx = normalizarCodigo(dados.tx_id)
         if (!tx || tx !== alvo) continue
+
         const registro = { ...dados, caminho }
-        if (assinaturaOficial.assinaturaValida(registro)) {
-            return { ...registro, assinaturaValida: true }
+        const assinaturaValida = assinaturaOficial.assinaturaValida(registro)
+        const status = normalizarCodigo(registro.status)
+
+        if (STATUS_INUTILIZAVEIS.includes(status)) {
+            if (!usado || (assinaturaValida && !usado.assinaturaValida)) {
+                usado = { ...registro, assinaturaValida }
+            }
+            continue
         }
+
+        if (assinaturaValida) {
+            if (!valido) valido = { ...registro, assinaturaValida: true }
+            continue
+        }
+
         if (!semAssinatura) semAssinatura = { ...registro, assinaturaValida: false }
     }
-    return semAssinatura
+
+    return usado || valido || semAssinatura
 }
 
 async function verificar({ codigo, valorEsperado, centralCode, marcar = true }) {
@@ -74,6 +91,11 @@ async function verificar({ codigo, valorEsperado, centralCode, marcar = true }) 
             return { aprovado: false, aguardar: true, motivo: 'sem_sms_oficial' }
         }
 
+        const status = normalizarCodigo(oficial.status)
+        if (STATUS_INUTILIZAVEIS.includes(status)) {
+            return { aprovado: false, aguardar: false, motivo: 'codigo_reutilizado', oficial }
+        }
+
         if (!oficial.assinaturaValida) {
             if (String(oficial.signature || '').trim()) {
                 return { aprovado: false, aguardar: false, motivo: 'assinatura_invalida', oficial }
@@ -81,10 +103,6 @@ async function verificar({ codigo, valorEsperado, centralCode, marcar = true }) 
             return { aprovado: false, aguardar: true, motivo: 'sms_sem_assinatura', oficial }
         }
 
-        const status = normalizarCodigo(oficial.status)
-        if (STATUS_INUTILIZAVEIS.includes(status)) {
-            return { aprovado: false, aguardar: false, motivo: 'codigo_reutilizado', oficial }
-        }
         if (status !== 'DISPONIVEL') {
             return { aprovado: false, aguardar: false, motivo: 'sms_indisponivel', oficial }
         }

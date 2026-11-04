@@ -72,6 +72,7 @@ function jaEnfileirado(referencia, numero) {
 async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, valorTotal, tipoPacote, ussdMethod }) {
     const vinculo = obterVinculo(from)
     if (!vinculo.centralCode || !vinculo.autoAtivo) {
+        console.warn(`[AUTO-ENTREGA] Grupo ${from} sem vínculo ativo (central=${vinculo.centralCode || 'null'}, auto=${vinculo.autoAtivo}). Pedido não enfileirado.`)
         return { ok: false, motivo: 'grupo-sem-central', resultados: [] }
     }
     if (!Array.isArray(pedidos) || pedidos.length === 0) {
@@ -108,6 +109,10 @@ async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, v
             referenciaRecibo: codigo || '',
             clienteNome: nome || ''
         })
+
+        if (!res.ok) {
+            console.warn(`[AUTO-ENTREGA] Pedido ${item.numero} não enfileirado: ${res.motivo || 'motivo-desconhecido'}`)
+        }
 
         resultados.push({
             numero: item.numero,

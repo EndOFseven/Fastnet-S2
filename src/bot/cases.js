@@ -668,60 +668,45 @@ module.exports = async function (sock, msg) {
             const Jimp = require('jimp')
             const img = await Jimp.read(mediaBuffer)
 
-            if (img.bitmap.width > 1100) {
-              img.resize(1000, Jimp.AUTO)
-            } else if (img.bitmap.width < 500) {
-              const factor = Math.min(2, 800 / img.bitmap.width)
+            if (img.bitmap.width > 1600) {
+              img.resize(1400, Jimp.AUTO)
+            } else if (img.bitmap.width < 1000) {
+              const factor = Math.min(2, 1000 / img.bitmap.width)
               img.resize(Math.round(img.bitmap.width * factor), Jimp.AUTO)
             }
-            img.greyscale()
+            img.greyscale().normalize().contrast(0.3)
             ocrBuffer = await img.getBufferAsync(Jimp.MIME_PNG)
           } catch (errJimp) {
             console.error('[OCR-JIMP] Erro no pré-processamento:', errJimp.message)
             ocrBuffer = null
           }
 
-          if (ocrBuffer) {
-            try {
-              const tesseract = require('node-tesseract-ocr')
-              const cfg = {
-                lang: 'por+eng',
-                oem: 1,
-                psm: 6,
-                load_system_dawg: '0',
-                load_freq_dawg: '0'
-              }
-              textoImagem = await tesseract.recognize(ocrBuffer, cfg)
+          const bufferParaOcr = ocrBuffer || mediaBuffer
+          try {
+            const { reconhecerImagem } = require('../utils/ocr')
+            textoImagem = await reconhecerImagem(bufferParaOcr, { psm: 6 })
 
-              if (!textoImagem || textoImagem.trim().length < 15) {
-                const cfg3 = {
-                  lang: 'por+eng',
-                  oem: 1,
-                  psm: 3,
-                  load_system_dawg: '0',
-                  load_freq_dawg: '0'
-                }
-                textoImagem = await tesseract.recognize(ocrBuffer, cfg3)
-              }
-
-              if (textoImagem) {
-                textoImagem = textoImagem
-                  .replace(/[|]/g, 'l')
-                  .replace(/\b([A-Z0-9]{4,14})\s*\.\s*/g, '$1. ')
-                  .replace(/O(\d)/g, '0$1')
-                  .replace(/(\d)O/g, '$10')
-                  .replace(/(\d),(\d{2})MT/g, '$1.$2MT')
-                  .replace(/lD da/gi, 'ID da')
-                  .replace(/Trans\s*feriste/gi, 'Transferiste')
-                  .replace(/Transieriste/gi, 'Transferiste')
-                  .replace(/transfered/gi, 'transfered')
-                  .replace(/transferred/gi, 'transfered')
-                  .replace(/-\s*\n\s*/g, '')
-                  .replace(/-\s+/g, '')
-              }
-            } catch (errOcr) {
-              console.error('[OCR-TESSERACT] Erro:', errOcr.message)
+            if (!textoImagem || textoImagem.trim().length < 15) {
+              textoImagem = await reconhecerImagem(bufferParaOcr, { psm: 3 })
             }
+
+            if (textoImagem) {
+              textoImagem = textoImagem
+                .replace(/[|]/g, 'l')
+                .replace(/\b([A-Z0-9]{4,14})\s*\.\s*/g, '$1. ')
+                .replace(/O(\d)/g, '0$1')
+                .replace(/(\d)O/g, '$10')
+                .replace(/(\d),(\d{2})MT/g, '$1.$2MT')
+                .replace(/lD da/gi, 'ID da')
+                .replace(/Trans\s*feriste/gi, 'Transferiste')
+                .replace(/Transieriste/gi, 'Transferiste')
+                .replace(/transfered/gi, 'transfered')
+                .replace(/transferred/gi, 'transfered')
+                .replace(/-\s*\n\s*/g, '')
+                .replace(/-\s+/g, '')
+            }
+          } catch (errOcr) {
+            console.error('[OCR-TESSERACT] Erro:', errOcr.message)
           }
       }
 
@@ -778,10 +763,6 @@ module.exports = async function (sock, msg) {
 
       if (mimetype.includes('pdf') || mimetype.includes('image') || fileName.toLowerCase().endsWith('.pdf')) {
 
-        const fs = require('fs')
-        const path = require('path')
-        const os = require('os')
-
         const mediaBuffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: sock.logger })
 
         let textoDocumento = ''
@@ -799,35 +780,11 @@ module.exports = async function (sock, msg) {
             console.error('[SEVEN-BOT] Erro ao limpar buffer do PDF:', e.message)
           }
 
-          const { exec } = require('child_process')
-          const util = require('util')
-          const execPromise = util.promisify(exec)
-          const crypto = require('crypto')
-          const tempId = crypto.randomBytes(8).toString('hex')
-          const tempPdfPath = path.join(os.tmpdir(), `pdf_${tempId}.pdf`)
-          const tempImgPrefix = path.join(os.tmpdir(), `page_${tempId}`)
-
           try {
-            await fs.promises.writeFile(tempPdfPath, cleanPdfBuffer)
-
-            try {
-              const { stdout: textFromPdftotext } = await execPromise(`pdftotext -layout "${tempPdfPath}" -`)
-              if (textFromPdftotext && textFromPdftotext.trim().length >= 15) {
-                textoDocumento = textFromPdftotext.trim()
-                console.log(`[PDF] pdftotext extraiu com sucesso ${textoDocumento.length} chars nativos do PDF!`)
-              }
-            } catch (errPdftotext) { }
-
-            if (!textoDocumento || textoDocumento.length < 15) {
-              try {
-                const pdfParse = require('pdf-parse')
-                const pdfData = await pdfParse(cleanPdfBuffer)
-                if (pdfData && pdfData.text && pdfData.text.trim().length >= 15) {
-                  textoDocumento = pdfData.text.trim()
-                }
-              } catch (err) {
-                console.error('[SEVEN-BOT] Erro ao extrair texto do PDF principal:', err.message)
-              }
+            const { extrairTextoPdf, renderizarPdfParaImagem, reconhecerImagem } = require('../utils/ocr')
+            textoDocumento = await extrairTextoPdf(cleanPdfBuffer)
+            if (textoDocumento) {
+              console.log(`[PDF] Texto nativo extraído com sucesso (${textoDocumento.length} chars).`)
             }
 
             const temTextoReciboPdf = textoDocumento && textoDocumento.length >= 15 &&
@@ -835,35 +792,21 @@ module.exports = async function (sock, msg) {
 
             if (!temTextoReciboPdf) {
               console.log(`[PDF] Sem texto extraível nativo (chars: ${(textoDocumento || '').length}). Renderizando página p/ OCR...`)
-              await execPromise(`pdftoppm -png -f 1 -l 1 -r 250 "${tempPdfPath}" "${tempImgPrefix}"`)
+              const imgBuffer = await renderizarPdfParaImagem(cleanPdfBuffer, { pagina: 1, escala: 2 })
 
-              const files = await fs.promises.readdir(os.tmpdir())
-              const matchedFile = files.find(f => f.startsWith(`page_${tempId}`) && f.endsWith('.png'))
-
-              if (matchedFile) {
-                const generatedImgPath = path.join(os.tmpdir(), matchedFile)
-                const imgBuffer = fs.readFileSync(generatedImgPath)
-
+              if (imgBuffer) {
                 let ocrBuffer = imgBuffer
                 try {
                   const Jimp = require('jimp')
                   const img = await Jimp.read(imgBuffer)
-                  if (img.bitmap.width > 1200) img.resize(1000, Jimp.AUTO)
+                  if (img.bitmap.width > 1600) img.resize(1400, Jimp.AUTO)
 
-                  img.greyscale().normalize()
+                  img.greyscale().normalize().contrast(0.3)
                   ocrBuffer = await img.getBufferAsync(Jimp.MIME_PNG)
                 } catch { }
 
-                const tesseract = require('node-tesseract-ocr')
-                const cfg = {
-                  lang: 'por+eng',
-                  oem: 1,
-                  psm: 4,
-                  load_system_dawg: '0',
-                  load_freq_dawg: '0'
-                }
-                const ocrResult = await tesseract.recognize(ocrBuffer, cfg)
-                console.log(`[PDF-OCR] Tesseract extraiu ${(ocrResult || '').trim().length} chars da imagem renderizada do PDF.`)
+                const ocrResult = await reconhecerImagem(ocrBuffer, { psm: 4 })
+                console.log(`[PDF-OCR] OCR extraiu ${(ocrResult || '').trim().length} chars da imagem renderizada do PDF.`)
 
                 if (ocrResult) {
                   textoDocumento = ocrResult
@@ -876,14 +819,10 @@ module.exports = async function (sock, msg) {
                     .replace(/-\s*\n\s*/g, '')
                     .replace(/-\s+/g, '')
                 }
-
-                try { fs.unlinkSync(generatedImgPath) } catch { }
               }
             }
           } catch (errGlobalPdf) {
             console.error('[PDF-GLOBAL] Erro no processamento de PDF:', errGlobalPdf.message)
-          } finally {
-            try { fs.unlinkSync(tempPdfPath) } catch { }
           }
         } else if (mimetype.includes('image')) {
 
@@ -898,8 +837,8 @@ module.exports = async function (sock, msg) {
                 img.greyscale().contrast(0.6).normalize()
                 docOcrBuffer = await img.getBufferAsync(Jimp.MIME_PNG)
               } catch { }
-              const tesseract = require('node-tesseract-ocr')
-              textoDocumento = await tesseract.recognize(docOcrBuffer, { lang: 'por+eng', oem: 1, psm: 3 })
+              const { reconhecerImagem } = require('../utils/ocr')
+              textoDocumento = await reconhecerImagem(docOcrBuffer, { psm: 3 })
             } catch { }
           }
         }
@@ -2892,6 +2831,12 @@ _Números desde o início do registo_`
         } catch (errAuto) {
           console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
         }
+        if (!autoEntrega.ok) {
+          const detalhes = (autoEntrega.resultados || [])
+            .map(r => `${r.numero || '?'}:${r.motivo || (r.ok ? 'ok' : 'falha')}`)
+            .join(', ')
+          console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
+        }
         const pedidosAutoIds = autoEntrega.ok
           ? autoEntrega.resultados.filter(r => r.ok).map(r => {
               const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
@@ -3213,6 +3158,12 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}
         })
       } catch (errAuto) {
         console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
+      }
+      if (!autoEntrega.ok) {
+        const detalhes = (autoEntrega.resultados || [])
+          .map(r => `${r.numero || '?'}:${r.motivo || (r.ok ? 'ok' : 'falha')}`)
+          .join(', ')
+        console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
       }
       const pedidosAutoIds = autoEntrega.ok
         ? autoEntrega.resultados.filter(r => r.ok).map(r => {

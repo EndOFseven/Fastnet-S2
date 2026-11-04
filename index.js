@@ -955,6 +955,16 @@ async function iniciarBots() {
     console.error('[START] Erro ao pré-carregar dados do Firebase:', errPreload.message)
   }
 
+  try {
+    const { restaurarVinculosFirebase } = require('./src/auto/vinculo')
+    const resultadoVinculos = await restaurarVinculosFirebase()
+    if (resultadoVinculos && resultadoVinculos.restaurados > 0) {
+      console.log(`[START] ${resultadoVinculos.restaurados} vínculo(s) de grupo recuperado(s) do Firebase.`)
+    }
+  } catch (errVinculo) {
+    console.error('[START] Erro ao restaurar vínculos de grupo:', errVinculo.message)
+  }
+
   const temSessaoPrincipal = fs.existsSync('./session/creds.json')
 
   if (temSessaoPrincipal) {
