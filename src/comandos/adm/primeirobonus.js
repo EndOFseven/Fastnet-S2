@@ -49,7 +49,7 @@ module.exports = async function (sock, msg, from, sender, text) {
                 '────────────────────────',
                 `🎁 *Bônus:* +${BONUS_MB} MB`,
                 `💵 *Valor mínimo:* ${VALOR_MINIMO} MT`,
-                '📦 *Pacotes:* qualquer pacote de dados com valor total igual ou maior',
+                '📦 *Pacotes:* somente diários (24h)',
                 '👤 *Elegível:* apenas o primeiro número do pedido',
                 '🚫 *Saldo:* não participa do bônus',
                 '📅 *Regra:* um vencedor por grupo a cada dia (Africa/Maputo)',
@@ -82,6 +82,7 @@ module.exports = async function (sock, msg, from, sender, text) {
                 `⚡ *Situação:* ${isPrimeiroBonusAtivo(from) ? '✅ ATIVO' : '❌ DESATIVADO'}`,
                 `💵 *Valor mínimo:* ${VALOR_MINIMO} MT`,
                 `🎁 *Bônus:* +${BONUS_MB} MB`,
+                '📦 *Pacotes:* somente diários (24h)',
                 '────────────────────────',
                 `💡 _Use:_ \`${prefix}primeirobonus on\`, \`${prefix}primeirobonus off\` ou \`${prefix}primeirobonus status\``
             ].join('\n')
@@ -107,6 +108,7 @@ module.exports = async function (sock, msg, from, sender, text) {
         `📅 *Dia:* ${estado.dia}`,
         `💵 *Valor mínimo:* ${VALOR_MINIMO} MT`,
         `🎁 *Bônus:* +${BONUS_MB} MB`,
+        '📦 *Pacotes:* somente diários (24h)',
         '────────────────────────',
         vencedor
             ? `👑 *Vencedor de hoje:* ${vencedor.clienteNome || 'Cliente'} (@${numeroVencedor})`
@@ -114,7 +116,7 @@ module.exports = async function (sock, msg, from, sender, text) {
         vencedor ? `📦 *Pacote:* ${pacoteVencedor}` : null,
         vencedor ? `🔥 *Sequência:* ${estado.vezesPrimeiro}x` : null,
         '────────────────────────',
-        '📌 _Apenas o primeiro número do pedido; saldo não participa._'
+        '📌 _Somente pacotes diários; apenas o primeiro número; saldo não participa._'
     ].filter(Boolean)
 
     await sock.sendMessage(from, {

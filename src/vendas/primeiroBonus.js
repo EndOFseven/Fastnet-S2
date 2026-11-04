@@ -67,11 +67,16 @@ function valorElegivel(valor) {
     return (Number(valor) || 0) >= VALOR_MINIMO
 }
 
+function isPacoteDiario(tipoPacote) {
+    return /di[aá]ri|24\s*h|atualiz/i.test(String(tipoPacote || ''))
+}
+
 function reservarPrimeiroBonus({ groupId, clienteId, clienteNome, codigo, valor, tipoPacote, isSaldo }) {
     limparReservasAntigas()
     if (!groupId || !clienteId) return { ganhou: false, motivo: 'dados-invalidos' }
     if (!isPrimeiroBonusAtivo(groupId)) return { ganhou: false, motivo: 'inativo' }
     if (isSaldo || /saldo/i.test(String(tipoPacote || ''))) return { ganhou: false, motivo: 'saldo' }
+    if (!isPacoteDiario(tipoPacote)) return { ganhou: false, motivo: 'nao-diario' }
     if (!valorElegivel(valor)) return { ganhou: false, motivo: 'valor-menor-10' }
 
     const hoje = getHojeMocambique()
@@ -201,6 +206,7 @@ module.exports = {
     getEstadoHoje,
     getVezesPrimeiro,
     valorElegivel,
+    isPacoteDiario,
     reservarPrimeiroBonus,
     confirmarPrimeiroBonus,
     liberarPrimeiroBonus,
