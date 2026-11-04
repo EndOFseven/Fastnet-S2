@@ -1,11 +1,73 @@
 process.env.OMP_NUM_THREADS = '1'
 process.env.OMP_THREAD_LIMIT = '1'
 
+const fs = require('fs')
+const path = require('path')
+
+// Garantir que a pasta data e o arquivo config.json existem antes de carregar os módulos
+const dataDir = path.join(__dirname, 'data')
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true })
+}
+
+const configPath = path.join(dataDir, 'config.json')
+const exampleConfigPath = path.join(dataDir, 'config.example.json')
+
+if (!fs.existsSync(configPath)) {
+  console.log('[CONFIG] ⚙️ data/config.json não encontrado. Inicializando automaticamente...')
+  let baseConfig = {
+    prefix: process.env.PREFIX || '.',
+    dono: process.env.OWNER_NUMBER ? [process.env.OWNER_NUMBER.replace(/\D/g, '')] : ['258XXXXXXXXX'],
+    ownerDisplayNumber: process.env.OWNER_NUMBER ? process.env.OWNER_NUMBER.replace(/\D/g, '') : '258XXXXXXXXX',
+    botNumber: process.env.BOT_NUMBER ? process.env.BOT_NUMBER.replace(/\D/g, '') : '',
+    botName: process.env.BOT_NAME || 'SEVEN BOT',
+    ownerName: process.env.OWNER_NAME || 'SEVEN',
+    ownerLids: [],
+    canalLink: '',
+    botaoExtra: 'Sobre o bot',
+    firebaseUrl: process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL || ''
+  }
+
+  if (fs.existsSync(exampleConfigPath)) {
+    try {
+      const example = JSON.parse(fs.readFileSync(exampleConfigPath, 'utf8'))
+      baseConfig = { ...baseConfig, ...example }
+    } catch {}
+  }
+
+  if (process.env.BOT_NUMBER) baseConfig.botNumber = process.env.BOT_NUMBER.replace(/\D/g, '')
+  if (process.env.OWNER_NUMBER) {
+    const ownerClean = process.env.OWNER_NUMBER.replace(/\D/g, '')
+    baseConfig.dono = [ownerClean]
+    baseConfig.ownerDisplayNumber = ownerClean
+  }
+  if (process.env.PREFIX) baseConfig.prefix = process.env.PREFIX
+  if (process.env.BOT_NAME) baseConfig.botName = process.env.BOT_NAME
+  if (process.env.OWNER_NAME) baseConfig.ownerName = process.env.OWNER_NAME
+  if (process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL) {
+    baseConfig.firebaseUrl = process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL
+  }
+
+  fs.writeFileSync(configPath, JSON.stringify(baseConfig, null, 2), 'utf8')
+  console.log('[CONFIG] ✅ data/config.json gerado automaticamente com sucesso.')
+}
+
+let config = {}
+try {
+  config = JSON.parse(fs.readFileSync(configPath, 'utf8'))
+} catch (e) {
+  console.error('[CONFIG] Erro ao ler data/config.json:', e.message)
+}
+
+if (process.env.BOT_NUMBER && !config.botNumber) config.botNumber = process.env.BOT_NUMBER.replace(/\D/g, '')
+if ((process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL) && !config.firebaseUrl) {
+  config.firebaseUrl = process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL
+}
+
 const cases1 = require('./src/bot/cases1')
 const cases = require('./src/bot/cases')
 const pino = require("pino")
 const readline = require("readline")
-const path = require("path")
 const { Boom } = require("@hapi/boom")
 const {
   makeWASocket,
@@ -28,18 +90,6 @@ const messageQueue = new MessageQueue(5, 30)
 const queues = {
   primary: messageQueue
 }
-
-const fs = require('fs')
-if (!fs.existsSync('./data/config.json')) {
-  if (process.stdin.isTTY) {
-    console.log('\n⚙️  Arquivo data/config.json não encontrado. Redirecionando para o assistente de configuração...\n')
-    require('./setup')()
-    return
-  }
-  console.error('\n❌ ERRO: data/config.json não encontrado!\n👉 Execute "npm run setup" no terminal para iniciar o assistente de configuração.\n')
-  process.exit(1)
-}
-const config = require('./data/config.json')
 
 const { GREEN, RESET, CYAN, YELLOW } = {
   GREEN: "\x1b[32m",
@@ -120,13 +170,19 @@ async function executarConexaoCli(isQrMode = false) {
     if (qr) {
       try {
         const qrcode = require('qrcode')
-        const qrPath = path.resolve(__dirname, '..', 'qrcode.png')
+        const qrPath = path.resolve(__dirname, 'qrcode.png')
         await qrcode.toFile(qrPath, qr, {
           margin: 2,
           width: 640,
           color: { dark: '#000000', light: '#ffffff' }
         })
         console.log(`[QR] Imagem atualizada em ${qrPath}`)
+        qrcode.toString(qr, { type: 'terminal', small: true }, (err, codeStr) => {
+          if (!err) {
+            console.log(`\nScanear QR Code abaixo para conectar o Bot:`)
+            console.log(codeStr)
+          }
+        })
       } catch (err) {
         console.error('[QR] Erro ao salvar imagem:', err.message)
       }
@@ -279,36 +335,45 @@ async function connectSocket() {
   const { state, saveCreds } = await useMultiFileAuthState(sessionFolder)
 
   let method = '1'
-  let phoneNumber = config.botNumber || ''
+  let targetPhone = String(process.env.PAIRING_NUMBER || process.env.BOT_NUMBER || config.botNumber || '').replace(/\D/g, '')
+  let phoneNumber = targetPhone
   const isAuthenticated = !!state.creds.registered || !!state.creds.me?.id
 
   if (!isAuthenticated) {
-    if (!process.stdin.isTTY) {
-      console.log(`[START] Conexão PRINCIPAL offline (sem credenciais). Para parear, execute no terminal: node index.js --pair <numero> ou node index.js --qr`)
-      return
-    }
-    console.log(`\n${CYAN}Nenhuma sessão ativa encontrada para o bot PRINCIPAL. Escolha o método de conexão:${RESET}`)
-    console.log(`1. Conectar via QR Code`)
-    console.log(`2. Conectar via Código de Pareamento (Pairing Code)`)
+    if (process.stdin.isTTY) {
+      console.log(`\n${CYAN}Nenhuma sessão ativa encontrada para o bot PRINCIPAL. Escolha o método de conexão:${RESET}`)
+      console.log(`1. Conectar via QR Code`)
+      console.log(`2. Conectar via Código de Pareamento (Pairing Code)`)
 
-    const opcao = await question(`\nDigite a opção desejada (1 ou 2) [Padrão 1, expira em 30s]: `, 30000, '1')
-    method = (opcao.trim() === '2') ? '2' : '1'
+      const defaultOpt = targetPhone ? '2' : '1'
+      const opcao = await question(`\nDigite a opção desejada (1 ou 2) [Padrão ${defaultOpt}, expira em 15s]: `, 15000, defaultOpt)
+      method = (opcao.trim() === '2') ? '2' : '1'
 
-    if (method === '2') {
-      const num = await question(`\nDigite o número do bot com DDI (ex: 25887xxxxxxx) [Padrão: ${phoneNumber || "nenhum"}]: `, 20000, phoneNumber)
-      const numeroLimpo = num.replace(/[^0-9]/g, "")
-      if (numeroLimpo) {
-        phoneNumber = numeroLimpo
-        try {
-          config.botNumber = phoneNumber
-          fs.writeFileSync('./data/config.json', JSON.stringify(config, null, 2))
-          console.log(`\n${GREEN}✅ Número do bot atualizado no config.json: ${phoneNumber}${RESET}\n`)
-        } catch (e) {
-          console.error(`Erro ao salvar número no config.json:`, e.message)
+      if (method === '2') {
+        const num = await question(`\nDigite o número do bot com DDI (ex: 25887xxxxxxx) [Padrão: ${phoneNumber || "nenhum"}]: `, 15000, phoneNumber)
+        const numeroLimpo = num.replace(/[^0-9]/g, "")
+        if (numeroLimpo) {
+          phoneNumber = numeroLimpo
+          try {
+            config.botNumber = phoneNumber
+            fs.writeFileSync('./data/config.json', JSON.stringify(config, null, 2))
+            console.log(`\n${GREEN}✅ Número do bot atualizado no config.json: ${phoneNumber}${RESET}\n`)
+          } catch (e) {
+            console.error(`Erro ao salvar número no config.json:`, e.message)
+          }
+        } else if (!phoneNumber) {
+          console.log(`\n❌ Nenhum número fornecido. Alternando para o método QR Code...\n`)
+          method = '1'
         }
-      } else if (!phoneNumber) {
-        console.log(`\n❌ Nenhum número fornecido. Alternando para o método QR Code...\n`)
+      }
+    } else {
+      // Modo não-interativo (Docker / Wispbyte)
+      if (phoneNumber && phoneNumber.length >= 8) {
+        method = '2'
+        console.log(`[START] Modo Container/Wispbyte: Usando Código de Pareamento para ${phoneNumber}.`)
+      } else {
         method = '1'
+        console.log(`[START] Modo Container/Wispbyte: Nenhum número configurado. Usando QR Code no terminal e gerando qrcode.png.`)
       }
     }
   }
@@ -396,7 +461,7 @@ async function connectSocket() {
     if (qr) {
       try {
         const qrcode = require('qrcode')
-        const qrFileName = path.resolve(__dirname, '..', 'qrcode.png')
+        const qrFileName = path.resolve(__dirname, 'qrcode.png')
         qrcode.toFile(qrFileName, qr, {
           margin: 2,
           width: 640,
@@ -888,15 +953,10 @@ async function iniciarBots() {
 
   if (temSessaoPrincipal) {
     console.log(`[START] Sessão anterior encontrada. Iniciando bot PRINCIPAL online...`)
-    connectSocket()
   } else {
-    console.log(`[START] Nenhuma sessão ativa para PRINCIPAL.`)
-    if (process.stdin.isTTY) {
-      connectSocket()
-    } else {
-      console.log(`[START] Execute via terminal para parear: node index.js --pair <numero> ou node index.js --qr`)
-    }
+    console.log(`[START] Nenhuma sessão ativa para PRINCIPAL. Iniciando fluxo de autenticação...`)
   }
+  connectSocket()
 }
 
 iniciarBots().catch(err => {

@@ -7,6 +7,13 @@ try {
     }
 } catch {}
 
+if (!firebaseUrl) {
+    const envUrl = process.env.FIREBASE_DATABASE_URL || process.env.FIREBASE_URL || ''
+    if (envUrl && !envUrl.includes('seu-projeto')) {
+        firebaseUrl = String(envUrl).trim()
+    }
+}
+
 firebaseUrl = firebaseUrl.replace(/\/+$/, '')
 const firebaseHost = firebaseUrl.replace(/^https?:\/\//, '')
 
