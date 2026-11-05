@@ -87,7 +87,7 @@ function reverterBonusItem(item) {
     delete item.bonusLabel
 }
 
-async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, valorTotal, tipoPacote, ussdMethod }) {
+async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, valorTotal, tipoPacote, ussdMethod, registrarNoMonitor = true }) {
     const vinculo = obterVinculo(from)
     if (!vinculo.centralCode || !vinculo.autoAtivo) {
         console.warn(`[AUTO-ENTREGA] Grupo ${from} sem vínculo ativo (central=${vinculo.centralCode || 'null'}, auto=${vinculo.autoAtivo}). Pedido não enfileirado.`)
@@ -164,7 +164,8 @@ async function enfileirarEntregas({ sock, from, sender, pedidos, codigo, nome, v
                 bonusMb: item.bonusMb || 0,
                 pacoteBaseMb: item.pacoteBaseMb || mb,
                 displayPacote: item.displayPacote || item.gb || `${mb}MB`,
-                bonusLabel: item.bonusLabel || ''
+                bonusLabel: item.bonusLabel || '',
+                registrarNoMonitor
             })
 
             if (!res.ok) {

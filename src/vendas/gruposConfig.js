@@ -4,9 +4,9 @@ function loadGruposConfig() {
     return gruposConfigStore.loadSync() || {}
 }
 
-function saveGruposConfig(dataOrForce = false) {
+function saveGruposConfig(dataOrForce = false, forceSave = false) {
     let data = gruposConfigStore.getCache()
-    let force = false
+    let force = forceSave === true
     if (dataOrForce && typeof dataOrForce === 'object') {
         data = dataOrForce
     }
@@ -36,14 +36,14 @@ function setRankingAtivo(groupId, ativo) {
         rankingAtivo: !!ativo,
         atualizadoEm: new Date().toISOString()
     }
-    saveGruposConfig(config)
+    saveGruposConfig(config, true)
     return true
 }
 
 function isRankingAtivo(groupId) {
     if (!groupId) return false
     const config = getGrupoConfig(groupId)
-    return config.rankingAtivo === true
+    return config.rankingAtivo !== false
 }
 
 module.exports = {

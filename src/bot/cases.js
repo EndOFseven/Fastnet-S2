@@ -3305,9 +3305,28 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${l
 
         let stats = null
         try {
-          const { registrarVenda } = require('../vendas/tracker')
-          const pacoteRegistro = pendente.pacoteMb ? `${pendente.pacoteMb}MB` : pacote
-          stats = registrarVenda(from, pendente.clienteId, clienteNome, pacoteRegistro)
+          const { registrarVenda, criarChaveVenda, parseToMB } = require('../vendas/tracker')
+          const isSaldoPendente = /saldo|mt\b/i.test(String(pacote || ''))
+          const quantidadePendente = isSaldoPendente
+            ? (parseFloat(String(pacote).replace(/[^\d.]/g, '')) || 0)
+            : (Number(pendente.pacoteMb) || parseToMB(pacote))
+          const pacoteRegistro = isSaldoPendente
+            ? `${quantidadePendente}MT`
+            : (pendente.pacoteMb ? `${pendente.pacoteMb}MB` : pacote)
+          const chaveIdempotencia = criarChaveVenda(
+            pendente.codigo,
+            clienteNumero,
+            quantidadePendente,
+            isSaldoPendente
+          )
+          stats = registrarVenda(
+            from,
+            pendente.clienteId,
+            clienteNome,
+            pacoteRegistro,
+            isSaldoPendente,
+            { chaveIdempotencia, forceSave: true }
+          )
         } catch (errStats) {
           console.error(`[ENTREGA] Erro ao registrar venda:`, errStats.message)
         }

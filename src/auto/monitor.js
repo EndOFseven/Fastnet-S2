@@ -1,6 +1,7 @@
 const fila = require('./fila')
 const { fetchFirebase, patchFirebase } = require('../utils/firebaseConfig')
 const { formatarPacoteComBonus } = require('../vendas/primeiroBonus')
+const { registrarVenda, criarChaveVenda } = require('../vendas/tracker')
 
 const INTERVALO_MS = 8000
 const TIMEOUT_PENDENTE_MS = 10 * 60 * 1000
@@ -142,6 +143,43 @@ function formatarCardPedido(pedido, status, remoto) {
     return linhas.join('\n')
 }
 
+function registrarVendaAuto(pedido) {
+    if (!pedido || pedido.vendaRegistrada) return
+    if (pedido.registrarNoMonitor === false) return
+    if (!pedido.grupoId || !pedido.solicitadoPor) return
+
+    const isSaldo = pedido.isSaldo === true
+    const quantidade = Number(isSaldo ? (pedido.saldoAmount || pedido.megasAmount) : pedido.megasAmount) || 0
+    if (quantidade <= 0) return
+
+    const pacote = isSaldo ? `${quantidade}MT` : `${quantidade}MB`
+    const chaveIdempotencia = criarChaveVenda(
+        pedido.referenciaRecibo,
+        pedido.clientePhone,
+        quantidade,
+        isSaldo
+    ) || `AUTO:${pedido.id}`
+
+    try {
+        const stats = registrarVenda(
+            pedido.grupoId,
+            pedido.solicitadoPor,
+            pedido.clienteNome || '',
+            pacote,
+            isSaldo,
+            { chaveIdempotencia, forceSave: true }
+        )
+        if (!stats) return
+        pedido.vendaRegistrada = true
+        fila.atualizarPedido(pedido.id, {
+            vendaRegistrada: true,
+            vendaRegistradaEm: Date.now()
+        })
+    } catch (err) {
+        console.error(`[AUTO-MONITOR] Falha ao registar venda do pedido ${pedido.id}:`, err.message)
+    }
+}
+
 async function atualizarOuEnviarCard(sock, pedido, status, remoto) {
     if (!sock || !pedido || !pedido.grupoId) return
     const chave = String(status).toLowerCase()
@@ -281,6 +319,9 @@ async function executarCiclo() {
                         fila.atualizarPedido(pedido.id, { status: statusRemoto })
                         pedidoAtual.status = statusRemoto
                     }
+                    if (statusRemoto === 'SUCESSO' || statusRemoto === 'CONCLUIDO') {
+                        registrarVendaAuto(pedidoAtual)
+                    }
                     await atualizarOuEnviarCard(sock, pedidoAtual, statusRemoto, remoto)
                     continue
                 }
@@ -334,5 +375,6 @@ module.exports = {
     executarCiclo,
     formatarCardPedido,
     obterNomeChip,
-    atualizarOuEnviarCard
+    atualizarOuEnviarCard,
+    registrarVendaAuto
 }

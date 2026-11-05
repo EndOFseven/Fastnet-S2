@@ -62,6 +62,10 @@ module.exports = async function (sock, msg, from, sender, text) {
             return true
         }
         setRankingAtivo(from, true)
+        if (!isRankingAtivo(from)) {
+            await sock.sendMessage(from, { text: '❌ Não foi possível guardar a ativação do ranking. Tente novamente.' }, { quoted: msg })
+            return true
+        }
         await sock.sendMessage(from, {
             text: [
                 '✅ *SISTEMA DE RANKING ATIVADO*',
@@ -83,6 +87,10 @@ module.exports = async function (sock, msg, from, sender, text) {
             return true
         }
         setRankingAtivo(from, false)
+        if (isRankingAtivo(from)) {
+            await sock.sendMessage(from, { text: '❌ Não foi possível guardar a desativação do ranking. Tente novamente.' }, { quoted: msg })
+            return true
+        }
         await sock.sendMessage(from, {
             text: [
                 '❌ *SISTEMA DE RANKING DESATIVADO*',

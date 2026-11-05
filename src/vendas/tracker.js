@@ -43,12 +43,27 @@ function formatMB(mb) {
     return Math.floor(mb) + 'MB'
 }
 
+function criarChaveVenda(referencia, numero, quantidade, isSaldo = false) {
+    const ref = String(referencia || '').trim().toUpperCase()
+    const num = String(numero || '').replace(/\D/g, '').replace(/^258/, '')
+    const qtd = Math.round(Number(quantidade) || 0)
+    if (!ref || ref === 'MANUAL' || !num || qtd <= 0) return ''
+    return `${isSaldo ? 'S' : 'D'}:${ref}:${num}:${qtd}`
+}
+
 function registrarVenda(groupId, clienteId, clienteNome, pacote, isSaldo = false, options = {}) {
     if (!groupId || !clienteId) return null
     if (options.isVenda === false) {
         return null
     }
     const vendas = loadVendas()
+    const chaveIdempotencia = String(options.chaveIdempotencia || '').trim()
+    if (chaveIdempotencia) {
+        const grupo = vendas[groupId]
+        const jaRegistrada = !!grupo &&
+            (grupo.historico || []).some(v => v.chaveIdempotencia === chaveIdempotencia && !v.isAnulacao)
+        if (jaRegistrada) return getClienteStats(groupId, clienteId)
+    }
 
     const hoje = getHojeMocambique()
     const dataHoraMZ = getDataMocambique().toISOString()
@@ -104,11 +119,12 @@ function registrarVenda(groupId, clienteId, clienteNome, pacote, isSaldo = false
         mb,
         isSaldo: isSaldo ? true : undefined,
         valorSaldo: isSaldo ? (parseFloat(String(pacote).replace(/[^\d.]/g, '')) || 0) : undefined,
+        chaveIdempotencia: chaveIdempotencia || undefined,
         data: dataHoraMZ,
         dataDia: hoje
     })
 
-    saveVendas(vendas)
+    vendasStore.save(vendas, options.forceSave === true)
 
     return getClienteStats(groupId, clienteId)
 }
@@ -409,6 +425,7 @@ function trimHistorico() {
 setInterval(trimHistorico, 600000)
 
 module.exports = {
+    criarChaveVenda,
     registrarVenda,
     anularVenda,
     getClienteStats,

@@ -129,6 +129,7 @@ async function enfileirar(dados) {
         pacoteBaseMb: Math.max(0, parseInt(dados.pacoteBaseMb, 10) || 0),
         displayPacote: dados.displayPacote || '',
         bonusLabel: dados.bonusLabel || '',
+        registrarNoMonitor: dados.registrarNoMonitor !== false,
         createdAt: agora
     }
     if (isSaldo) pedido.saldoAmount = saldoAmount
@@ -166,6 +167,7 @@ async function enfileirar(dados) {
         pacoteBaseMb: pedido.pacoteBaseMb,
         displayPacote: pedido.displayPacote,
         bonusLabel: pedido.bonusLabel,
+        registrarNoMonitor: pedido.registrarNoMonitor,
         criadoEm: agora,
         atualizadoEm: agora,
         notificacoes: {},
