@@ -605,7 +605,11 @@ module.exports = async function (sock, msg) {
 
       const { getGrupoConfig } = require('../vendas/gruposConfig')
       const gVendasCfg = getGrupoConfig(from)
-      const hasCentral = !!(gVendasCfg && (gVendasCfg.apiKey || gVendasCfg.centralCode))
+      const hasCentral = !!(
+        (gVendasCfg && (gVendasCfg.apiKey || gVendasCfg.centralCode)) ||
+        gInfo?.centralCode ||
+        obterVinculo(from).centralCode
+      )
 
       const { contasStore } = require('../utils/firebaseDataLayer')
       const todasContas = contasStore.loadSync() || {}
@@ -3069,7 +3073,13 @@ _Números desde o início do registo_`
 
       const { getGrupoConfig } = require('../vendas/gruposConfig')
       const grupoConfig = getGrupoConfig(from)
-      const centralCode = (grupoConfig?.apiKey || '').replace(/—|–|－/g, '-').trim().toUpperCase()
+      const centralCode = String(
+        sessao.centralCode ||
+        obterVinculo(from).centralCode ||
+        grupoConfig?.centralCode ||
+        grupoConfig?.apiKey ||
+        ''
+      ).replace(/—|–|－/g, '-').trim().toUpperCase()
 
       const { criarCompra } = require('../auto/fluxoCompra')
       let compraResultado = null

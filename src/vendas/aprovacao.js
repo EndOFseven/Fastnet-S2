@@ -51,6 +51,9 @@ async function aprovarPendente(sock, pendente, opts = {}) {
                 remetente: pendente.clienteId,
                 origem: 'sms',
                 sistema: pendente.sistema || '',
+                tipoPacote: pendente.tipoPacote || '',
+                ussdMethod: pendente.ussdMethod || '*162#',
+                centralCode: pendente.centralCode || obterVinculo(pendente.grupoId).centralCode || '',
                 pagamentoConfirmadoSms: true
             })
         }
