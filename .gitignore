@@ -44,3 +44,7 @@ data/*
 !data/config.json
 !data/hmac_oficial.key
 !scripts/.gitkeep
+
+# Estado local do motor de compras/envio massivo
+data/comprasAuto.json
+data/enviosMassivos.json

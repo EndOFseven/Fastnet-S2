@@ -30,31 +30,38 @@ function salvarContador(num) {
 }
 
 let contadorMemoria = null
+let cadeiaContador = Promise.resolve()
 
-async function obterProximoNumeroPedido(centralCode) {
-    if (contadorMemoria === null) {
-        let n = carregarContador()
-        if (n === 0 && centralCode) {
-            try {
-                const fb = await fetchFirebase(`device_pairings/${centralCode}/contador_pedidos/ultimoNumero`)
-                if (Number(fb) > 0) n = Number(fb)
-            } catch {}
+function obterProximoNumeroPedido(centralCode) {
+    const executar = async () => {
+        if (contadorMemoria === null) {
+            let n = carregarContador()
+            if (n === 0 && centralCode) {
+                try {
+                    const fb = await fetchFirebase(`device_pairings/${centralCode}/contador_pedidos/ultimoNumero`)
+                    if (Number(fb) > 0) n = Number(fb)
+                } catch {}
+            }
+            contadorMemoria = n
         }
-        contadorMemoria = n
+
+        contadorMemoria += 1
+        const proximo = contadorMemoria
+        salvarContador(proximo)
+
+        if (centralCode) {
+            patchFirebase(`device_pairings/${centralCode}/contador_pedidos`, {
+                ultimoNumero: proximo,
+                atualizadoEm: new Date().toISOString()
+            }).catch(() => {})
+        }
+
+        return proximo
     }
 
-    contadorMemoria += 1
-    const proximo = contadorMemoria
-    salvarContador(proximo)
-
-    if (centralCode) {
-        patchFirebase(`device_pairings/${centralCode}/contador_pedidos`, {
-            ultimoNumero: proximo,
-            atualizadoEm: new Date().toISOString()
-        }).catch(() => {})
-    }
-
-    return proximo
+    const resultado = cadeiaContador.then(executar, executar)
+    cadeiaContador = resultado.then(() => {}, () => {})
+    return resultado
 }
 
 function carregarPedidos() {
@@ -101,8 +108,14 @@ async function enfileirar(dados) {
     if (isSaldo && megasAmount <= 0 && saldoAmount > 0) megasAmount = saldoAmount
     if (!isSaldo && megasAmount <= 0) return { ok: false, motivo: 'Pacote de megas inválido.' }
 
-    const numero = await obterProximoNumeroPedido(centralCode)
-    const id = `PED-${numero}`
+    const numeroInformado = parseInt(dados.numeroPedido, 10)
+    const numero = Number.isFinite(numeroInformado) && numeroInformado > 0
+        ? numeroInformado
+        : await obterProximoNumeroPedido(centralCode)
+    const id = dados.id ? String(dados.id) : `PED-${numero}`
+    const existentes = carregarPedidos()
+    if (existentes[id]) return { ok: true, pedido: existentes[id], existente: true }
+
     const agora = Date.now()
     const pedido = {
         id,
@@ -110,6 +123,7 @@ async function enfileirar(dados) {
         status: 'PENDENTE',
         clientePhone: telefone,
         megasAmount,
+        mbExibicao: Math.max(0, parseInt(dados.mbExibicao, 10) || megasAmount),
         valorPago: Number(dados.valorPago) || 0,
         valor: Number(dados.valorPago) || 0,
         ussdMethod: dados.ussdMethod || (isSaldo ? '*111#' : '*162#'),
@@ -120,6 +134,8 @@ async function enfileirar(dados) {
         packageOption: dados.packageOption || '',
         repeticoes: Math.max(1, parseInt(dados.repeticoes, 10) || 1),
         centralCode,
+        targetDeviceId: String(dados.targetDeviceId || '').trim(),
+        targetAssignedEm: Number(dados.targetAssignedEm) || agora,
         origem: 'WHATSAPP_AUTO',
         grupoId: dados.grupoId || '',
         solicitadoPor: dados.solicitadoPor || '',
@@ -130,6 +146,13 @@ async function enfileirar(dados) {
         displayPacote: dados.displayPacote || '',
         bonusLabel: dados.bonusLabel || '',
         registrarNoMonitor: dados.registrarNoMonitor !== false,
+        compraId: dados.compraId || '',
+        loteId: dados.loteId || '',
+        parte: Math.max(0, parseInt(dados.parte, 10) || 0),
+        totalPartes: Math.max(0, parseInt(dados.totalPartes, 10) || 0),
+        silenciarCard: dados.silenciarCard === true,
+        perfil: dados.perfil || '',
+        timeoutPendenteMs: Math.max(0, parseInt(dados.timeoutPendenteMs, 10) || 0),
         createdAt: agora
     }
     if (isSaldo) pedido.saldoAmount = saldoAmount
@@ -154,8 +177,11 @@ async function enfileirar(dados) {
         grupoId: pedido.grupoId,
         clientePhone: telefone,
         megasAmount,
+        mbExibicao: pedido.mbExibicao,
         saldoAmount: isSaldo ? saldoAmount : 0,
         valorPago: pedido.valorPago,
+        targetDeviceId: pedido.targetDeviceId || '',
+        targetAssignedEm: pedido.targetAssignedEm || agora,
         targetSimSlot: pedido.targetSimSlot !== undefined ? pedido.targetSimSlot : null,
         simSlot: pedido.simSlot !== undefined ? pedido.simSlot : null,
         simName: pedido.simName || null,
@@ -168,6 +194,13 @@ async function enfileirar(dados) {
         displayPacote: pedido.displayPacote,
         bonusLabel: pedido.bonusLabel,
         registrarNoMonitor: pedido.registrarNoMonitor,
+        compraId: pedido.compraId,
+        loteId: pedido.loteId,
+        parte: pedido.parte,
+        totalPartes: pedido.totalPartes,
+        silenciarCard: pedido.silenciarCard,
+        perfil: pedido.perfil,
+        timeoutPendenteMs: pedido.timeoutPendenteMs,
         criadoEm: agora,
         atualizadoEm: agora,
         notificacoes: {},
@@ -274,6 +307,7 @@ module.exports = {
     STATUS_ATIVOS,
     STATUS_FINAIS,
     normalizarTelefone,
+    obterProximoNumeroPedido,
     enfileirar,
     listarPorGrupo,
     listarAtivos,

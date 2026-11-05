@@ -1,10 +1,9 @@
 const verificacao = require('./verificacao')
 const comprovantesOficiais = require('./comprovantesOficiais')
-const { enfileirarEntregas } = require('../auto/entregaAuto')
+const fluxoCompra = require('../auto/fluxoCompra')
+const { obterVinculo } = require('../auto/vinculo')
 const { marcarReciboUsado, finalizarProcessamentoRecibo } = require('./recibos')
-const { salvarEntregaPendente } = require('../bot/entregasPendentes')
 const { salvarSessao } = require('./sessao')
-const { montarMensagemBonus } = require('./primeiroBonus')
 
 const emAndamento = new Set()
 
@@ -31,29 +30,6 @@ function numeroVisivel(jid) {
     return String(jid || '').split('@')[0].split(':')[0]
 }
 
-function guardarEntregas(pendente, pedidos) {
-    for (const item of pedidos) {
-        const dadosEntrega = {
-            clienteId: pendente.clienteId,
-            clienteNome: pendente.clienteNome,
-            numero: item.numero,
-            pacote: item.displayPacote,
-            pacoteMb: item.mb,
-            pacoteBaseMb: item.pacoteBaseMb || item.mb,
-            bonusMb: item.bonusMb || 0,
-            valor: item.valor,
-            codigo: pendente.codigo,
-            grupoOrigem: pendente.grupoId,
-            timestamp: Date.now()
-        }
-        salvarEntregaPendente(item.numero, dadosEntrega)
-        if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
-        if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
-        if (pendente.clienteId) salvarEntregaPendente(pendente.clienteId, dadosEntrega)
-        if (pendente.codigo) salvarEntregaPendente(pendente.codigo, dadosEntrega)
-    }
-}
-
 async function aprovarPendente(sock, pendente, opts = {}) {
     if (!pendente || !pendente.codigo) return { ok: false }
     if (emAndamento.has(pendente.codigo)) return { ok: false, motivo: 'em_processamento' }
@@ -64,7 +40,7 @@ async function aprovarPendente(sock, pendente, opts = {}) {
 
         const pedidos = Array.isArray(pendente.pedidos) ? pendente.pedidos : []
         const semNumero = pedidos.length === 0
-        let autoEntrega = { ok: false, resultados: [], motivo: 'sem-pedidos' }
+        let compraResultado = null
 
         if (semNumero && pendente.grupoId && pendente.clienteId) {
             salvarSessao(pendente.clienteId, {
@@ -79,32 +55,42 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             })
         }
 
-        if (pedidos.length > 0) {
-            guardarEntregas(pendente, pedidos)
+        if (!semNumero) {
+            const vinculo = pendente.centralCode ? null : obterVinculo(pendente.grupoId)
+            const centralCode = pendente.centralCode || vinculo?.centralCode || ''
             try {
-                autoEntrega = await enfileirarEntregas({
+                compraResultado = await fluxoCompra.criarCompra({
                     sock,
                     from: pendente.grupoId,
                     sender: pendente.clienteId,
-                    pedidos,
-                    codigo: pendente.codigo,
                     nome: pendente.clienteNome,
+                    itens: pedidos,
                     valorTotal: pendente.valor,
                     tipoPacote: pendente.tipoPacote || '',
-                    ussdMethod: pendente.ussdMethod || '*162#'
+                    codigo: pendente.codigo,
+                    ussdMethod: pendente.ussdMethod || '*162#',
+                    centralCode,
+                    origem: opts.por || 'sms-oficial'
                 })
             } catch (err) {
-                console.error('[APROVACAO] Falha ao enfileirar comprovativo aprovado:', err.message)
+                console.error('[APROVACAO] Falha ao criar compra automática:', err.message)
+                compraResultado = { ok: false, motivo: 'erro-interno', erro: 'Falha ao iniciar o envio automático.' }
             }
-            if (autoEntrega.ok) guardarEntregas(pendente, pedidos)
         }
 
-        marcarReciboUsado(pendente.codigo, {
-            valor: pendente.valor,
-            destino: pendente.destino,
-            por: opts.por || 'sms-oficial',
-            confirmadoPor: opts.porJid || 'sms-operadora'
-        })
+        const compraOk = Boolean(compraResultado?.ok)
+        const compraAguardando = Boolean(compraResultado?.aguardando)
+        const vendaJaRegistrada = Boolean(compraResultado?.compra?.vendaRegistrada)
+
+        if (!compraOk && !vendaJaRegistrada) {
+            marcarReciboUsado(pendente.codigo, {
+                valor: pendente.valor,
+                destino: pendente.destino,
+                por: opts.por || 'sms-oficial',
+                confirmadoPor: opts.porJid || 'sms-operadora'
+            })
+            finalizarProcessamentoRecibo(pendente.codigo)
+        }
         await comprovantesOficiais.marcarUtilizado(pendente.codigo, pendente.centralCode, opts.por || 'sms-oficial')
 
         if (sock && pendente.msgKey) {
@@ -113,58 +99,53 @@ async function aprovarPendente(sock, pendente, opts = {}) {
             } catch { }
         }
 
-        const pedidosIds = autoEntrega.ok
-            ? autoEntrega.resultados.filter(r => r.ok).map(r => {
-                const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
-                return `#${num}`
-            })
-            : []
-        const dadosTxt = pedidos.map(p => p.displayPacote || `${p.mb}MB`).join(' • ')
-        const clienteJid = jidMencao(pendente.clienteId)
-        const adminJid = opts.porJid ? jidMencao(opts.porJid) : null
-        const termoEspera = autoEntrega.ok
-            ? 'Pedido enviado ao servidor automaticamente. Acompanha o estado por aqui!'
-            : semNumero
-                ? 'Pagamento validado. Envia o teu número Vodacom para receber os megas.'
-                : 'Pagamento validado. A entrega será feita pela administração.'
-
-        const linhas = [
-            '✅ *PAGAMENTO CONFIRMADO*',
-            '────────────────────────',
-            `👤 *Cliente:* @${numeroVisivel(pendente.clienteId)}`,
-            `💵 *Valor:* ${pendente.valor} MT`,
-            ...(dadosTxt ? [`📊 *Dados:* ${dadosTxt}`] : []),
-            `📋 *Recibo:* \`${pendente.codigo}\``,
-            `🔎 *Fonte:* ${opts.origemLabel || 'SMS oficial da operadora'}`,
-            ...(adminJid ? [`👑 *Confirmado por:* @${numeroVisivel(adminJid)}`] : []),
-            ...(pedidosIds.length > 0 ? [`🧾 *#PEDIDO:* ${pedidosIds.join(', ')}`] : []),
-            ...montarMensagemBonus(autoEntrega.bonus),
-            ...(semNumero
+        if (sock && pendente.grupoId && (semNumero || (!compraOk && !compraAguardando))) {
+            const clienteJid = jidMencao(pendente.clienteId)
+            const adminJid = opts.porJid ? jidMencao(opts.porJid) : null
+            const dadosTxt = pedidos.map(p => p.displayPacote || `${p.mb}MB`).join(' • ')
+            const erro = compraResultado?.erro || compraResultado?.motivo || ''
+            const linhas = semNumero
                 ? [
+                    '✅ *PAGAMENTO CONFIRMADO*',
+                    '────────────────────────',
+                    `👤 *Cliente:* @${numeroVisivel(pendente.clienteId)}`,
+                    `💵 *Valor:* ${pendente.valor} MT`,
+                    ...(dadosTxt ? [`📊 *Dados:* ${dadosTxt}`] : []),
+                    `📋 *Recibo:* \`${pendente.codigo}\``,
+                    `🔎 *Fonte:* ${opts.origemLabel || 'SMS oficial da operadora'}`,
+                    ...(adminJid ? [`👑 *Confirmado por:* @${numeroVisivel(adminJid)}`] : []),
                     '────────────────────────',
                     '📱 *Envie agora o teu número Vodacom para receber os megas:*',
-                    '_Exemplo: 841234567_'
+                    '_Exemplo: 841234567_',
+                    '────────────────────────',
+                    '⏳ _Pagamento validado. Envia o teu número para receber os megas._'
                 ]
-                : []),
-            '────────────────────────',
-            `⏳ _${termoEspera}_`
-        ]
+                : [
+                    '⚠️ *PAGAMENTO CONFIRMADO, MAS FALHOU O ENVIO AUTOMÁTICO*',
+                    '────────────────────────',
+                    `👤 *Cliente:* @${numeroVisivel(pendente.clienteId)}`,
+                    `💵 *Valor:* ${pendente.valor} MT`,
+                    ...(dadosTxt ? [`📊 *Dados:* ${dadosTxt}`] : []),
+                    `📋 *Recibo:* \`${pendente.codigo}\``,
+                    ...(erro ? [`🔎 *Motivo:* ${erro}`] : []),
+                    '────────────────────────',
+                    'A administração foi avisada. Nenhum dado foi perdido.'
+                ]
 
-        if (sock && pendente.grupoId) {
             const mencoes = [clienteJid, adminJid].filter(Boolean)
             try {
                 await sock.sendMessage(pendente.grupoId, { text: linhas.join('\n'), mentions: mencoes })
             } catch {
                 try { await sock.sendMessage(pendente.grupoId, { text: linhas.join('\n') }) } catch { }
             }
-
-            if (autoEntrega.ok && autoEntrega.resultados) {
-                const { enviarCardsEntrega } = require('../auto/entregaAuto')
-                await enviarCardsEntrega(sock, pendente.grupoId, autoEntrega.resultados)
-            }
         }
 
-        return { ok: true, autoEntrega, pedidosIds }
+        return {
+            ok: compraOk || semNumero || compraAguardando,
+            compra: compraResultado?.compra || null,
+            aguardando: compraAguardando,
+            motivo: compraResultado?.motivo
+        }
     } finally {
         emAndamento.delete(pendente.codigo)
     }

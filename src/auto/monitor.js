@@ -1,4 +1,7 @@
 const fila = require('./fila')
+const fluxoCompra = require('./fluxoCompra')
+const envioMassivo = require('./envioMassivo')
+const reatribuidor = require('./reatribuidor')
 const { fetchFirebase, patchFirebase } = require('../utils/firebaseConfig')
 const { formatarPacoteComBonus } = require('../vendas/primeiroBonus')
 const { registrarVenda, criarChaveVenda } = require('../vendas/tracker')
@@ -13,6 +16,9 @@ const STATUS_FINAIS = ['SUCESSO', 'CONCLUIDO', 'FALHA', 'CANCELADO', 'EXPIRADO',
 let timer = null
 let rodando = false
 let obterSock = null
+let ultimaTentativaEspera = 0
+let processandoEspera = false
+let preparando = false
 
 // Bug conhecido da Vodacom: "minimo de 0 MB" aparece como erro, mas a transferencia e efetivada.
 function isFalsoErroMinimoZero(remoto) {
@@ -46,7 +52,7 @@ function limparTextoResposta(txt) {
 
 function formatarPacote(pedido) {
     if (pedido.isSaldo) return `Saldo ${pedido.saldoAmount || pedido.megasAmount} MT`
-    const mb = Number(pedido.megasAmount) || 0
+    const mb = Number(pedido.mbExibicao) || Number(pedido.megasAmount) || 0
     const bonusMb = Number(pedido.bonusMb) || 0
     if (bonusMb > 0) {
         const baseMb = Number(pedido.pacoteBaseMb) || Math.max(0, mb - bonusMb)
@@ -182,6 +188,7 @@ function registrarVendaAuto(pedido) {
 
 async function atualizarOuEnviarCard(sock, pedido, status, remoto) {
     if (!sock || !pedido || !pedido.grupoId) return
+    if (pedido.silenciarCard || pedido.compraId || pedido.loteId) return
     const chave = String(status).toLowerCase()
     if (pedido.notificacoes && pedido.notificacoes[chave]) return
 
@@ -257,10 +264,34 @@ function limparAntigos() {
     for (const grupoId of grupos) fila.limparFinalizados(grupoId)
 }
 
+async function talvezProcessarEspera(sock) {
+    if (processandoEspera) return
+    if (Date.now() - ultimaTentativaEspera < 60000) return
+    processandoEspera = true
+    ultimaTentativaEspera = Date.now()
+    try {
+        await fluxoCompra.processarComprasEmEspera(sock)
+        await envioMassivo.retomarLotesPendentes(sock)
+    } catch (err) {
+        console.error('[AUTO-MONITOR] Falha ao reprocessar compras/lotes em espera:', err.message)
+    } finally {
+        processandoEspera = false
+    }
+}
+
 async function executarCiclo() {
-    if (rodando) return
+    if (rodando || preparando) return
     const sock = typeof obterSock === 'function' ? obterSock() : null
     if (!sock) return
+
+    preparando = true
+    try {
+        await talvezProcessarEspera(sock)
+        await reatribuidor.processarReatribuicoes()
+    } finally {
+        preparando = false
+    }
+    if (rodando) return
 
     // Inclui pedidos finais recentes para captar correções do app (ex.: FALHA -> SUCESSO).
     const agoraBase = Date.now()
@@ -290,7 +321,13 @@ async function executarCiclo() {
                     if (!STATUS_FINAIS.includes(pedido.status) && agora - (pedido.criadoEm || agora) > DESAPARECIDO_MS) {
                         fila.atualizarPedido(pedido.id, { status: 'DESAPARECIDO' })
                         const atualizado = fila.buscarPorId(pedido.id) || pedido
-                        await atualizarOuEnviarCard(sock, atualizado, 'DESAPARECIDO', null)
+                        if (atualizado.compraId) {
+                            await fluxoCompra.processarStatusPedido(sock, atualizado, 'DESAPARECIDO', null)
+                        } else if (atualizado.loteId) {
+                            await envioMassivo.processarStatusPedido(sock, atualizado, 'DESAPARECIDO')
+                        } else {
+                            await atualizarOuEnviarCard(sock, atualizado, 'DESAPARECIDO', null)
+                        }
                     }
                     continue
                 }
@@ -319,10 +356,16 @@ async function executarCiclo() {
                         fila.atualizarPedido(pedido.id, { status: statusRemoto })
                         pedidoAtual.status = statusRemoto
                     }
-                    if (statusRemoto === 'SUCESSO' || statusRemoto === 'CONCLUIDO') {
-                        registrarVendaAuto(pedidoAtual)
+                    if (pedidoAtual.compraId) {
+                        await fluxoCompra.processarStatusPedido(sock, pedidoAtual, statusRemoto, remoto)
+                    } else if (pedidoAtual.loteId) {
+                        await envioMassivo.processarStatusPedido(sock, pedidoAtual, statusRemoto)
+                    } else {
+                        if (statusRemoto === 'SUCESSO' || statusRemoto === 'CONCLUIDO') {
+                            registrarVendaAuto(pedidoAtual)
+                        }
+                        await atualizarOuEnviarCard(sock, pedidoAtual, statusRemoto, remoto)
                     }
-                    await atualizarOuEnviarCard(sock, pedidoAtual, statusRemoto, remoto)
                     continue
                 }
 
@@ -335,10 +378,17 @@ async function executarCiclo() {
                     continue
                 }
 
-                if (agora - (pedidoAtual.criadoEm || agora) > TIMEOUT_PENDENTE_MS && !STATUS_FINAIS.includes(pedidoAtual.status)) {
+                const timeoutPendente = Number(pedidoAtual.timeoutPendenteMs) || TIMEOUT_PENDENTE_MS
+                if (agora - (pedidoAtual.criadoEm || agora) > timeoutPendente && !STATUS_FINAIS.includes(pedidoAtual.status)) {
                     fila.atualizarPedido(pedido.id, { status: 'EXPIRADO' })
                     pedidoAtual.status = 'EXPIRADO'
-                    await atualizarOuEnviarCard(sock, pedidoAtual, 'EXPIRADO', remoto)
+                    if (pedidoAtual.compraId) {
+                        await fluxoCompra.processarStatusPedido(sock, pedidoAtual, 'EXPIRADO', remoto)
+                    } else if (pedidoAtual.loteId) {
+                        await envioMassivo.processarStatusPedido(sock, pedidoAtual, 'EXPIRADO')
+                    } else {
+                        await atualizarOuEnviarCard(sock, pedidoAtual, 'EXPIRADO', remoto)
+                    }
                 }
             }
         }

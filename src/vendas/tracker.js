@@ -1,4 +1,5 @@
 const { vendasStore } = require('../utils/firebaseDataLayer')
+const { formatarVolumeCurto } = require('../utils/volume')
 
 const { getHojeMocambique, getDataMocambique, toDateStrMZ } = require('../utils/timezone')
 
@@ -435,6 +436,7 @@ module.exports = {
     getGroupStats,
     parseToMB,
     formatMB,
+    formatarVolumeCurto,
     trimHistorico,
     getHojeMocambique,
     getDataMocambique

@@ -553,13 +553,16 @@ module.exports = async function (sock, msg) {
             `${config.prefix}enviarauto`,
             `${config.prefix}autoenviar`,
             `${config.prefix}enviarpacote`,
+            `${config.prefix}envio massivo`,
+            `${config.prefix}enviomassivo`,
+            `${config.prefix}massivo`,
             `${config.prefix}vincular`,
             `${config.prefix}desvincular`,
             `${config.prefix}fila`,
             `${config.prefix}menuauto`
         ]
 
-        const isValid = comandosValidos.some(cmd => text === cmd || text.startsWith(cmd + ' '))
+        const isValid = comandosValidos.some(cmd => text === cmd || text.startsWith(cmd + ' ') || text.startsWith(cmd + '\n'))
 
         const cmdSemPrefixo = text.replace(config.prefix, '').trimStart().split(/\s+/)[0].toLowerCase()
         const isPluginCmd = pluginManager.getPlugins().some(p => {

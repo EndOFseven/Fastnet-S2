@@ -64,6 +64,61 @@ function fetchFirebase(path, isRetry = false) {
     })
 }
 
+function fetchFirebaseComEtag(path) {
+    if (!firebaseUrl) return Promise.resolve({ data: null, etag: null })
+    return new Promise(res => {
+        const url = buildFirebaseUrl(path)
+        const req = https.get(url, {
+            agent: httpsAgent,
+            timeout: 5000,
+            headers: { 'X-Firebase-ETag': 'true' }
+        }, r => {
+            let d = ''
+            r.on('data', c => d += c)
+            r.on('end', () => {
+                let data = null
+                try { data = JSON.parse(d) } catch {}
+                res({ data, etag: r.headers.etag || r.headers.ETag || null })
+            })
+        })
+        req.on('error', () => res({ data: null, etag: null }))
+        req.on('timeout', () => { req.destroy(); res({ data: null, etag: null }) })
+    })
+}
+
+function putFirebaseComIfMatch(path, data, etag) {
+    if (!firebaseUrl || !etag) return Promise.resolve({ ok: false, conflito: true })
+    return new Promise(res => {
+        try {
+            const pData = JSON.stringify(data)
+            const url = buildFirebaseUrl(path)
+            const req = https.request(url, {
+                method: 'PUT',
+                agent: httpsAgent,
+                timeout: 5000,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(pData),
+                    'if-match': etag
+                }
+            }, r => {
+                r.resume()
+                res({
+                    ok: r.statusCode >= 200 && r.statusCode < 300,
+                    conflito: r.statusCode === 412,
+                    statusCode: r.statusCode
+                })
+            })
+            req.on('error', () => res({ ok: false, conflito: true }))
+            req.on('timeout', () => { req.destroy(); res({ ok: false, conflito: true }) })
+            req.write(pData)
+            req.end()
+        } catch {
+            res({ ok: false, conflito: true })
+        }
+    })
+}
+
 function putFirebase(path, data, isRetry = false) {
     if (!firebaseUrl) return Promise.resolve(false)
     return new Promise(res => {
@@ -170,7 +225,9 @@ module.exports = {
     httpsAgent,
     buildFirebaseUrl,
     fetchFirebase,
+    fetchFirebaseComEtag,
     putFirebase,
+    putFirebaseComIfMatch,
     patchFirebase,
     deleteFirebase
 }

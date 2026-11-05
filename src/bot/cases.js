@@ -33,8 +33,7 @@ const {
 } = require('../comandos/adm/antimidia')
 const pluginManager = require('../comandos/pluginManager')
 const { salvarSessao, getSessao, limparSessao, bufferizarNumeroCandidato, consumirNumeroCandidato } = require('../vendas/sessao')
-const { extrairNumerosEDistribuirPacotes, formatarDadosDisplay } = require('../vendas/distribuidorPacotes')
-const { montarMensagemBonus } = require('../vendas/primeiroBonus')
+const { extrairNumerosEDistribuirPacotes } = require('../vendas/distribuidorPacotes')
 const {
   calcularMegas,
   calcularMegasPorTexto,
@@ -45,7 +44,7 @@ const {
   obterTabelaDiamanteGrupo,
   obterTabelaSaldoGrupo
 } = require('../vendas/tabela')
-const { marcarReciboUsado, reciboJaUsado, registrarEntregaRecibo, iniciarProcessamentoRecibo } = require('../vendas/recibos')
+const { marcarReciboUsado, reciboJaUsado, registrarEntregaRecibo, iniciarProcessamentoRecibo, finalizarProcessamentoRecibo } = require('../vendas/recibos')
 const verificacao = require('../vendas/verificacao')
 const comprovantesOficiais = require('../vendas/comprovantesOficiais')
 const { obterVinculo } = require('../auto/vinculo')
@@ -2780,32 +2779,6 @@ _Números desde o início do registo_`
           return
         }
 
-        const { salvarEntregaPendente } = require('./entregasPendentes')
-        const salvarPendentes = () => {
-          for (const item of pedidosClientes) {
-            const dadosEntrega = {
-              clienteId: sender,
-              clienteNome: nome,
-              numero: item.numero,
-              pacote: item.displayPacote,
-              pacoteMb: item.mb,
-              pacoteBaseMb: item.pacoteBaseMb || item.mb,
-              bonusMb: item.bonusMb || 0,
-              valor: item.valor,
-              codigo: codigo,
-              grupoOrigem: from,
-              timestamp: Date.now()
-            }
-            salvarEntregaPendente(item.numero, dadosEntrega)
-            if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
-            if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
-            if (sender) salvarEntregaPendente(sender, dadosEntrega)
-            if (codigo) salvarEntregaPendente(codigo, dadosEntrega)
-          }
-        }
-        salvarPendentes()
-
-        marcarReciboUsado(codigo)
         const tipoPacoteStr = ((megas && megas.tipo) || '').toLowerCase()
         const isDirectSaldo = tipoPacoteStr.includes('saldo')
         const isOfertaSaldo = tipoPacoteStr.includes('semanal') ||
@@ -2813,74 +2786,48 @@ _Números desde o início do registo_`
                               tipoPacoteStr.includes('diamante') ||
                               tipoPacoteStr.includes('ilimitado') ||
                               tipoPacoteStr.includes('tudo top')
-        const isSaldoOrder = isDirectSaldo
         const ussdMethod = (isDirectSaldo || isOfertaSaldo) ? '*111#' : '*162#'
-        const isSaldoPacote = isDirectSaldo
-        const rotuloItem = isSaldoPacote ? '💰 *Saldo:*' : '📊 *Dados:*'
-        const pacoteNome = isSaldoPacote ? 'Saldo' : ((megas && megas.tipo) || 'Convencional')
 
-        const { enfileirarEntregas } = require('../auto/entregaAuto')
-        let autoEntrega = { ok: false, resultados: [] }
+        const { criarCompra } = require('../auto/fluxoCompra')
+        const centralCode = obterVinculo(from).centralCode || null
+        let compraResultado = null
         try {
-          autoEntrega = await enfileirarEntregas({
+          compraResultado = await criarCompra({
             sock,
             from,
             sender,
-            pedidos: pedidosClientes,
-            codigo,
             nome,
+            itens: pedidosClientes,
             valorTotal: valor,
             tipoPacote: (megas && megas.tipo) || '',
-            ussdMethod
+            codigo,
+            ussdMethod,
+            centralCode,
+            origem: 'comprovante'
           })
         } catch (errAuto) {
-          console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
+          console.error('[AUTO-COMPRA] Falha ao criar compra:', errAuto.message)
         }
-        if (!autoEntrega.ok) {
-          const detalhes = (autoEntrega.resultados || [])
-            .map(r => `${r.numero || '?'}:${r.motivo || (r.ok ? 'ok' : 'falha')}`)
-            .join(', ')
-          console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
+
+        if (!compraResultado?.ok && !compraResultado?.compra?.vendaRegistrada) {
+          marcarReciboUsado(codigo)
+          finalizarProcessamentoRecibo(codigo)
         }
-        if (autoEntrega.ok) salvarPendentes()
-        const dadosDisplay = formatarDadosDisplay(pedidosClientes)
-        const linhasBonus = montarMensagemBonus(autoEntrega.bonus)
-        const pedidosAutoIds = autoEntrega.ok
-          ? autoEntrega.resultados.filter(r => r.ok).map(r => {
-              const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
-              return `#${num}`
-            })
-          : []
-
-        const termoEspera = autoEntrega.ok
-          ? 'Pedido enviado ao servidor automaticamente. Acompanha o estado por aqui!'
-          : (isSaldoPacote ? 'A transferência será feita manualmente pelos administradores em instantes!' : 'O envio manual será feito pelos administradores em instantes!')
-
-        const linhaPedidoAuto = pedidosAutoIds.length > 0
-          ? `\n🧾 *#PEDIDO:* ${pedidosAutoIds.join(', ')}`
-          : ''
-
-        const respostaSistema = `✅ *Comprovativo Aprovado!*
-📦 *Pacote:* ${pacoteNome}
-──────────────────
-📢 *Referência:* *${codigo}*
-💵 *Valor:* ${valor} MT
-${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${linhasBonus.join('\n')}` : ''}
-──────────────────
-⏳ _${termoEspera}_`
-
-        const safeMentionJid = sender ? (String(sender).split('@')[0].split(':')[0] + '@s.whatsapp.net') : null
-        try {
-          await sock.sendMessage(from, { text: respostaSistema, mentions: safeMentionJid ? [safeMentionJid] : [] }, { quoted: msg })
-        } catch {
-          try { await sock.sendMessage(from, { text: respostaSistema }) } catch {}
+        if (!compraResultado?.ok && !compraResultado?.aguardando) {
+          const motivo = compraResultado?.erro || compraResultado?.motivo || 'Não foi possível iniciar o envio automático.'
+          await sock.sendMessage(from, {
+            text: [
+              '⚠️ *PAGAMENTO CONFIRMADO, MAS FALHOU O ENVIO AUTOMÁTICO*',
+              '────────────────────────',
+              `📋 *Recibo:* ${codigo}`,
+              `💵 *Valor:* ${valor} MT`,
+              `🔎 *Motivo:* ${motivo}`,
+              '',
+              'A administração foi avisada. Nenhum dado foi perdido.'
+            ].join('\n')
+          }, { quoted: msg })
         }
-        await reactMsg('⏳')
-
-        if (autoEntrega.ok && autoEntrega.resultados) {
-          const { enviarCardsEntrega } = require('../auto/entregaAuto')
-          await enviarCardsEntrega(sock, from, autoEntrega.resultados)
-        }
+        await reactMsg(compraResultado?.ok || compraResultado?.aguardando ? '⏳' : '⚠️')
 
         limparSessao(sender, from)
         return
@@ -3111,32 +3058,6 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${l
         }
       }
 
-      const { salvarEntregaPendente } = require('./entregasPendentes')
-      const salvarPendentes = () => {
-        for (const item of pedidosClientes) {
-          const dadosEntrega = {
-            clienteId: sender,
-            clienteNome: sessao.nome,
-            numero: item.numero,
-            pacote: item.displayPacote,
-            pacoteMb: item.mb,
-            pacoteBaseMb: item.pacoteBaseMb || item.mb,
-            bonusMb: item.bonusMb || 0,
-            valor: item.valor,
-            codigo: sessao.codigo,
-            grupoOrigem: from,
-            timestamp: Date.now()
-          }
-
-          salvarEntregaPendente(item.numero, dadosEntrega)
-          if (!item.numero.startsWith('258')) salvarEntregaPendente('258' + item.numero, dadosEntrega)
-          if (item.numero.startsWith('258')) salvarEntregaPendente(item.numero.substring(3), dadosEntrega)
-          if (sender) salvarEntregaPendente(sender, dadosEntrega)
-          if (sessao.codigo) salvarEntregaPendente(sessao.codigo, dadosEntrega)
-        }
-      }
-      salvarPendentes()
-
       const tipoPacoteStr = ((megas && megas.tipo) || '').toLowerCase()
       const isDirectSaldo = tipoPacoteStr.includes('saldo')
       const isOfertaSaldo = tipoPacoteStr.includes('semanal') ||
@@ -3144,85 +3065,51 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${l
                             tipoPacoteStr.includes('diamante') ||
                             tipoPacoteStr.includes('ilimitado') ||
                             tipoPacoteStr.includes('tudo top')
-      const isSaldoOrder = isDirectSaldo
       const ussdMethod = (isDirectSaldo || isOfertaSaldo) ? '*111#' : '*162#'
-      const isSaldoPacote = isDirectSaldo
-      const rotuloItem = isSaldoPacote ? '💰 *Saldo:*' : '📊 *Dados:*'
-      const pacoteNome = isSaldoPacote ? 'Saldo' : (megas.tipo ? megas.tipo : 'Convencional')
 
       const { getGrupoConfig } = require('../vendas/gruposConfig')
       const grupoConfig = getGrupoConfig(from)
       const centralCode = (grupoConfig?.apiKey || '').replace(/—|–|－/g, '-').trim().toUpperCase()
 
-      const { enfileirarEntregas } = require('../auto/entregaAuto')
-      let autoEntrega = { ok: false, resultados: [] }
+      const { criarCompra } = require('../auto/fluxoCompra')
+      let compraResultado = null
       try {
-        autoEntrega = await enfileirarEntregas({
+        compraResultado = await criarCompra({
           sock,
           from,
           sender,
-          pedidos: pedidosClientes,
-          codigo: sessao.codigo,
           nome: sessao.nome,
+          itens: pedidosClientes,
           valorTotal: sessao.valor,
           tipoPacote: (megas && megas.tipo) || '',
-          ussdMethod
+          codigo: sessao.codigo,
+          ussdMethod,
+          centralCode,
+          origem: 'sessao'
         })
       } catch (errAuto) {
-        console.error('[AUTO-ENTREGA] Falha ao enfileirar comprovativo:', errAuto.message)
+        console.error('[AUTO-COMPRA] Falha ao criar compra:', errAuto.message)
       }
-      if (!autoEntrega.ok) {
-        const detalhes = (autoEntrega.resultados || [])
-          .map(r => `${r.numero || '?'}:${r.motivo || (r.ok ? 'ok' : 'falha')}`)
-          .join(', ')
-        console.warn(`[AUTO-ENTREGA] ${from} não enfileirado: ${autoEntrega.motivo || 'motivo-desconhecido'}${detalhes ? ` | ${detalhes}` : ''}`)
+
+      if (!compraResultado?.ok && !compraResultado?.compra?.vendaRegistrada) {
+        marcarReciboUsado(sessao.codigo)
+        finalizarProcessamentoRecibo(sessao.codigo)
       }
-      if (autoEntrega.ok) salvarPendentes()
-      const dadosDisplay = formatarDadosDisplay(pedidosClientes)
-      const linhasBonus = montarMensagemBonus(autoEntrega.bonus)
-      const pedidosAutoIds = autoEntrega.ok
-        ? autoEntrega.resultados.filter(r => r.ok).map(r => {
-            const num = r.pedido.numero || (r.pedido.id ? String(r.pedido.id).replace(/^(?:PED|WA)\-/i, '') : '1')
-            return `#${num}`
-          })
-        : []
-
-      const termoEspera = autoEntrega.ok
-        ? 'Pedido enviado ao servidor automaticamente. Acompanha o estado por aqui!'
-        : (isSaldoPacote ? 'A transferência será feita manualmente pelos administradores em instantes!' : 'O envio manual será feito pelos administradores em instantes!')
-
-      const linhaPedidoAuto = pedidosAutoIds.length > 0
-        ? `\n🧾 *#PEDIDO:* ${pedidosAutoIds.join(', ')}`
-        : ''
-
-      const respostaSistema = `✅ *Comprovativo Aprovado!*
-📦 *Pacote:* ${pacoteNome}
-──────────────────
-📢 *Referência:* *${sessao.codigo}*
-💵 *Valor:* ${sessao.valor} MT
-${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${linhasBonus.join('\n')}` : ''}
-──────────────────
-⏳ _${termoEspera}_`
-
-      const senderCleanJid = sender ? (sender.split('@')[0].split(':')[0] + '@s.whatsapp.net') : null
-      try {
+      if (!compraResultado?.ok && !compraResultado?.aguardando) {
+        const motivo = compraResultado?.erro || compraResultado?.motivo || 'Não foi possível iniciar o envio automático.'
         await sock.sendMessage(from, {
-          text: respostaSistema,
-          mentions: senderCleanJid ? [senderCleanJid] : []
+          text: [
+            '⚠️ *PAGAMENTO CONFIRMADO, MAS FALHOU O ENVIO AUTOMÁTICO*',
+            '────────────────────────',
+            `📋 *Recibo:* ${sessao.codigo}`,
+            `💵 *Valor:* ${sessao.valor} MT`,
+            `🔎 *Motivo:* ${motivo}`,
+            '',
+            'A administração foi avisada. Nenhum dado foi perdido.'
+          ].join('\n')
         }, { quoted: msg })
-      } catch {
-        await sock.sendMessage(from, { text: respostaSistema })
       }
-      await reactMsg('⏳')
-
-      if (autoEntrega.ok && autoEntrega.resultados) {
-        const { enviarCardsEntrega } = require('../auto/entregaAuto')
-        await enviarCardsEntrega(sock, from, autoEntrega.resultados)
-      }
-
-      marcarReciboUsado(sessao.codigo)
-      limparSessao(sender, from)
-      return
+      await reactMsg(compraResultado?.ok || compraResultado?.aguardando ? '⏳' : '⚠️')
 
       limparSessao(sender, from)
       return
@@ -3296,6 +3183,20 @@ ${rotuloItem} ${dadosDisplay}${linhaPedidoAuto}${linhasBonus.length > 0 ? `\n${l
       if (pendente) {
         algumProcessado = true
         console.log(`[ENTREGA] Confirmada para ${numeroDest}. Cliente: ${pendente.clienteId}`)
+
+        if (pendente.compraId) {
+          try {
+            const { confirmarPartePorSms, temPartesPendentes } = require('../auto/fluxoCompra')
+            await confirmarPartePorSms(sock, pendente, mbEnv)
+            if (!temPartesPendentes(pendente.compraId, numeroDest)) {
+              removerEntregaPendente(numeroDest)
+              removerEntregaPendente('258' + numeroDest)
+            }
+          } catch (errCompra) {
+            console.error('[ENTREGA] Falha ao confirmar parte da compra:', errCompra.message)
+          }
+          continue
+        }
 
         const clienteNome = pendente.clienteNome || 'Cliente'
         const clienteNumero = pendente.numero || numeroDest
