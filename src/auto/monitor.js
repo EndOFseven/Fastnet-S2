@@ -1,5 +1,6 @@
 const fila = require('./fila')
 const fluxoCompra = require('./fluxoCompra')
+const notificador = require('./notificadorCompra')
 const envioMassivo = require('./envioMassivo')
 const reatribuidor = require('./reatribuidor')
 const { fetchFirebase, patchFirebase } = require('../utils/firebaseConfig')
@@ -149,6 +150,92 @@ function formatarCardPedido(pedido, status, remoto) {
     return linhas.join('\n')
 }
 
+function ehPacoteNormalCompra(pedido) {
+    return Boolean(pedido?.compraId) && notificador.ehPacoteDados(pedido)
+}
+
+function formatarCardAntigo(pedido, status, remoto) {
+    const st = String(status || pedido?.status || '').toUpperCase()
+    if (st === 'PENDENTE' || !st) return null
+
+    const id = pedido?.id || 'N/A'
+    const cliente = formatarTelefone(pedido?.clientePhone)
+    const pacote = formatarPacote(pedido || {})
+    const chip = obterNomeChip(pedido, remoto)
+    const linhaChip = chip ? [`📶 Chip: *${chip}*`] : []
+
+    if (st === 'PROCESSANDO') {
+        return [
+            '⚡ *PEDIDO EM ANDAMENTO*',
+            '────────────────────────',
+            `🧾 ID: *${id}*`,
+            `📱 Cliente: ${cliente}`,
+            `📦 Pacote: ${pacote}`,
+            ...linhaChip,
+            '',
+            '_O app acatou o pedido e já está a enviar por USSD._'
+        ].join('\n')
+    }
+
+    if (st === 'SUCESSO' || st === 'CONCLUIDO') {
+        const resposta = limparTextoResposta(remoto?.ussdResponseText)
+        const linhas = [
+            '✅ *PEDIDO CONCLUÍDO COM ÊXITO*',
+            '────────────────────────',
+            `🧾 ID: *${id}*`,
+            `📱 Cliente: ${cliente}`,
+            `📦 Pacote: ${pacote}`,
+            ...linhaChip
+        ]
+        if (resposta) linhas.push('', `💬 ${resposta.slice(0, 300)}`)
+        return linhas.join('\n')
+    }
+
+    if (st === 'FALHA' || st === 'CANCELADO') {
+        const motivo = limparTextoResposta(remoto?.motivoErro || remoto?.erro || remoto?.ussdResponseText)
+        const linhas = [
+            '❌ *PEDIDO SEM ÊXITO*',
+            '────────────────────────',
+            `🧾 ID: *${id}*`,
+            `📱 Cliente: ${cliente}`,
+            `📦 Pacote: ${pacote}`,
+            `⚠️ Estado: *${st}*`
+        ]
+        if (motivo) linhas.push('', `💬 ${motivo.slice(0, 300)}`)
+        linhas.push('', '_Confira o app e envie outra vez se for preciso._')
+        return linhas.join('\n')
+    }
+
+    if (st === 'EXPIRADO') {
+        const minutos = Math.max(1, Math.round(
+            (Number(pedido?.timeoutPendenteMs) || TIMEOUT_PENDENTE_MS) / 60000
+        ))
+        return [
+            '⚠️ *PEDIDO EXPIRADO*',
+            '────────────────────────',
+            `🧾 ID: *${id}*`,
+            `📱 Cliente: ${cliente}`,
+            `📦 Pacote: ${pacote}`,
+            '',
+            `_O app não aceitou o pedido dentro de ${minutos} minutos. Confira a ligação do servidor e envie de novo._`
+        ].join('\n')
+    }
+
+    if (st === 'DESAPARECIDO') {
+        return [
+            '⚠️ *PEDIDO APAGADO NO SERVIDOR*',
+            '────────────────────────',
+            `🧾 ID: *${id}*`,
+            `📱 Cliente: ${cliente}`,
+            `📦 Pacote: ${pacote}`,
+            '',
+            '_O pedido já não consta na fila do Firebase. Envie outra vez se o cliente ainda aguarda._'
+        ].join('\n')
+    }
+
+    return null
+}
+
 function registrarVendaAuto(pedido) {
     if (!pedido || pedido.vendaRegistrada) return
     if (pedido.registrarNoMonitor === false) return
@@ -188,7 +275,8 @@ function registrarVendaAuto(pedido) {
 
 async function atualizarOuEnviarCard(sock, pedido, status, remoto) {
     if (!sock || !pedido || !pedido.grupoId) return
-    if (pedido.silenciarCard || pedido.compraId || pedido.loteId) return
+    const cardAntigo = ehPacoteNormalCompra(pedido)
+    if (!cardAntigo && (pedido.silenciarCard || pedido.compraId || pedido.loteId)) return
     const chave = String(status).toLowerCase()
     if (pedido.notificacoes && pedido.notificacoes[chave]) return
 
@@ -198,7 +286,9 @@ async function atualizarOuEnviarCard(sock, pedido, status, remoto) {
         pedido.simName = chip
     }
 
-    const texto = formatarCardPedido(pedido, status, remoto)
+    const texto = cardAntigo
+        ? formatarCardAntigo(pedido, status, remoto)
+        : formatarCardPedido(pedido, status, remoto)
     if (!texto) return
 
     let editSucesso = false
@@ -322,6 +412,7 @@ async function executarCiclo() {
                         fila.atualizarPedido(pedido.id, { status: 'DESAPARECIDO' })
                         const atualizado = fila.buscarPorId(pedido.id) || pedido
                         if (atualizado.compraId) {
+                            await atualizarOuEnviarCard(sock, atualizado, 'DESAPARECIDO', null)
                             await fluxoCompra.processarStatusPedido(sock, atualizado, 'DESAPARECIDO', null)
                         } else if (atualizado.loteId) {
                             await envioMassivo.processarStatusPedido(sock, atualizado, 'DESAPARECIDO')
@@ -357,6 +448,7 @@ async function executarCiclo() {
                         pedidoAtual.status = statusRemoto
                     }
                     if (pedidoAtual.compraId) {
+                        await atualizarOuEnviarCard(sock, pedidoAtual, statusRemoto, remoto)
                         await fluxoCompra.processarStatusPedido(sock, pedidoAtual, statusRemoto, remoto)
                     } else if (pedidoAtual.loteId) {
                         await envioMassivo.processarStatusPedido(sock, pedidoAtual, statusRemoto)
@@ -383,6 +475,7 @@ async function executarCiclo() {
                     fila.atualizarPedido(pedido.id, { status: 'EXPIRADO' })
                     pedidoAtual.status = 'EXPIRADO'
                     if (pedidoAtual.compraId) {
+                        await atualizarOuEnviarCard(sock, pedidoAtual, 'EXPIRADO', remoto)
                         await fluxoCompra.processarStatusPedido(sock, pedidoAtual, 'EXPIRADO', remoto)
                     } else if (pedidoAtual.loteId) {
                         await envioMassivo.processarStatusPedido(sock, pedidoAtual, 'EXPIRADO')
@@ -424,6 +517,7 @@ module.exports = {
     pararMonitor,
     executarCiclo,
     formatarCardPedido,
+    formatarCardAntigo,
     obterNomeChip,
     atualizarOuEnviarCard,
     registrarVendaAuto

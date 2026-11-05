@@ -2,6 +2,26 @@ const config = require('../../data/config.json')
 const { formatarVolumeCurto } = require('../utils/volume')
 
 const SEPARADOR = '────────────────────────'
+const LIMIAR_TRANSFERENCIA_MB = 20 * 1024
+const LIMIAR_RESUMO_MB = 10 * 1024
+
+function ehPacoteDados(compra) {
+    if (!compra) return false
+    if (compra.isSaldo === true) return false
+    return !/saldo/i.test(String(compra.tipoPacote || ''))
+}
+
+function limitesMensagensFinais(compra) {
+    if (!ehPacoteDados(compra)) {
+        return { transferenciaCompleta: true, resumo: true }
+    }
+
+    const totalMb = Number(compra?.totalMb) || 0
+    return {
+        transferenciaCompleta: totalMb >= LIMIAR_TRANSFERENCIA_MB,
+        resumo: totalMb >= LIMIAR_RESUMO_MB
+    }
+}
 
 function numeroVisivel(jid) {
     return String(jid || '').split('@')[0].split(':')[0]
@@ -202,6 +222,10 @@ async function enviarCompraParcial(sock, compra) {
 }
 
 module.exports = {
+    LIMIAR_TRANSFERENCIA_MB,
+    LIMIAR_RESUMO_MB,
+    ehPacoteDados,
+    limitesMensagensFinais,
     formatarDataHora,
     formatarPagamentoConfirmado,
     formatarAguardando,

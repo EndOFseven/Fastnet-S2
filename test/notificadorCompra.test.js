@@ -9,6 +9,7 @@ const compra = {
     grupoId: '120363000000000000@g.us',
     clienteId: '258843117244@s.whatsapp.net',
     clienteNome: 'Cliente',
+    tipoPacote: 'Diário',
     totalMb: 30720,
     totalPartes: 3,
     partesEnviadas: 1,
@@ -59,4 +60,45 @@ test('mensagem final usa o resumo do cliente', () => {
     assert.match(texto, /Compra:\* 30GB/)
     assert.match(texto, /Hoje: 30GB/)
     assert.match(texto, /ENTREGUE ✅/)
+})
+
+test('limites finais para pacote de 430MB', () => {
+    const limites = notificador.limitesMensagensFinais({
+        tipoPacote: 'Diário',
+        totalMb: 430
+    })
+    assert.deepEqual(limites, { transferenciaCompleta: false, resumo: false })
+})
+
+test('limites finais para pacote de 10GB', () => {
+    const limites = notificador.limitesMensagensFinais({
+        tipoPacote: 'Diário',
+        totalMb: 10240
+    })
+    assert.deepEqual(limites, { transferenciaCompleta: false, resumo: true })
+})
+
+test('limites finais para pacote de 19GB', () => {
+    const limites = notificador.limitesMensagensFinais({
+        tipoPacote: 'Diário',
+        totalMb: 19456
+    })
+    assert.deepEqual(limites, { transferenciaCompleta: false, resumo: true })
+})
+
+test('limites finais para pacote de 20GB', () => {
+    const limites = notificador.limitesMensagensFinais({
+        tipoPacote: 'Diário',
+        totalMb: 20480
+    })
+    assert.deepEqual(limites, { transferenciaCompleta: true, resumo: true })
+})
+
+test('saldo mantém as duas mensagens finais', () => {
+    const limites = notificador.limitesMensagensFinais({
+        tipoPacote: 'Saldo',
+        totalMb: 100
+    })
+    assert.deepEqual(limites, { transferenciaCompleta: true, resumo: true })
+    assert.equal(notificador.ehPacoteDados({ tipoPacote: 'Saldo' }), false)
 })

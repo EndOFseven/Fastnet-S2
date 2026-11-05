@@ -194,17 +194,24 @@ async function finalizarSePossivel(sock, compra) {
 
     if (total > 0 && sucessos === total) {
         if (!compra.notificacoes?.completa) {
+            const limites = notificador.limitesMensagensFinais(compra)
             compra.status = 'CONCLUIDA'
             compra.notificacoes = compra.notificacoes || {}
             compra.notificacoes.completa = true
             salvarCompra(compra)
-            await notificador.enviarTransferenciaCompleta(sock, compra)
-            await new Promise(resolve => setTimeout(resolve, 300))
-            let stats = null
-            try {
-                stats = tracker.getVendasPorPeriodo(compra.grupoId, compra.clienteId)
-            } catch {}
-            await notificador.enviarCompraConcluida(sock, compra, stats)
+
+            if (limites.transferenciaCompleta) {
+                await notificador.enviarTransferenciaCompleta(sock, compra)
+                await new Promise(resolve => setTimeout(resolve, 300))
+            }
+
+            if (limites.resumo) {
+                let stats = null
+                try {
+                    stats = tracker.getVendasPorPeriodo(compra.grupoId, compra.clienteId)
+                } catch {}
+                await notificador.enviarCompraConcluida(sock, compra, stats)
+            }
             return
         }
         compra.status = 'CONCLUIDA'
@@ -298,6 +305,8 @@ async function enfileirarCompraInterno(sock, compra) {
         salvarCompra(compra)
     }
 
+    const pacoteNormal = notificador.ehPacoteDados(compra)
+
     for (const parte of compra.partes) {
         if (parte.pedidoId) continue
 
@@ -323,7 +332,7 @@ async function enfileirarCompraInterno(sock, compra) {
             compraId: compra.id,
             parte: parte.parteGlobal,
             totalPartes: compra.totalPartes,
-            silenciarCard: true,
+            silenciarCard: !pacoteNormal,
             perfil: 'COMPRA',
             registrarNoMonitor: false,
             timeoutPendenteMs: TIMEOUT_PENDENTE_MS
@@ -424,6 +433,7 @@ async function processarStatusPedidoInterno(sock, pedido, status, remoto) {
     const parte = buscarParte(compra, pedido)
     if (!parte) return false
 
+    const pacoteNormal = notificador.ehPacoteDados(compra)
     const statusFinal = String(status || pedido.status || '').toUpperCase()
     const sucesso = ['SUCESSO', 'CONCLUIDO'].includes(statusFinal)
     const falha = ['FALHA', 'CANCELADO', 'EXPIRADO', 'DESAPARECIDO'].includes(statusFinal)
@@ -434,7 +444,7 @@ async function processarStatusPedidoInterno(sock, pedido, status, remoto) {
             parte.concluidoEm = Date.now()
             salvarCompra(compra)
 
-            const deveEnviarParte = parte.indiceItem < parte.totalItem &&
+            const deveEnviarParte = !pacoteNormal && parte.indiceItem < parte.totalItem &&
                 !compra.notificacoes?.[`parte:${parte.id}`]
             if (deveEnviarParte) {
                 compra.notificacoes = compra.notificacoes || {}
@@ -458,7 +468,9 @@ async function processarStatusPedidoInterno(sock, pedido, status, remoto) {
             compra.notificacoes = compra.notificacoes || {}
             compra.notificacoes[chave] = true
             salvarCompra(compra)
-            await notificador.enviarFalha(sock, compra, parte, parte.erro)
+            if (!pacoteNormal) {
+                await notificador.enviarFalha(sock, compra, parte, parte.erro)
+            }
         }
         await finalizarSePossivel(sock, compra)
         return true
