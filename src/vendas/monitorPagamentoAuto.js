@@ -167,6 +167,14 @@ async function processarRegistro(sock, grupo, registro) {
         return
     }
 
+    const destino = assinaturaOficial.normalizarTelefone(registro.target_phone)
+    const conteudo = pagamentoAuto.extrairNumeroConteudo(registro.raw_text)
+    if (!/^8[45]\d{7}$/.test(destino) || !conteudo.ok) return
+    if (conteudo.numero !== destino) {
+        await guardarAlerta(sock, grupo, registro, 'destino_divergente', { conteudo })
+        return
+    }
+
     const centralRegistro = codigoCentral(registro.central_code)
     if (!centralRegistro || centralRegistro !== grupo.central) {
         await guardarAlerta(sock, grupo, registro, 'central_divergente')
@@ -182,22 +190,6 @@ async function processarRegistro(sock, grupo, registro) {
 
     if (!assinaturaOficial.assinaturaV2Valida(registro)) {
         await guardarAlerta(sock, grupo, registro, 'assinatura_invalida')
-        return
-    }
-
-    const destino = assinaturaOficial.normalizarTelefone(registro.target_phone)
-    if (!/^8[45]\d{7}$/.test(destino)) {
-        await guardarAlerta(sock, grupo, registro, 'destino_ausente')
-        return
-    }
-
-    const conteudo = pagamentoAuto.extrairNumeroConteudo(registro.raw_text)
-    if (!conteudo.ok) {
-        await guardarAlerta(sock, grupo, registro, conteudo.motivo, { conteudo })
-        return
-    }
-    if (conteudo.numero !== destino) {
-        await guardarAlerta(sock, grupo, registro, 'destino_divergente', { conteudo })
         return
     }
 
