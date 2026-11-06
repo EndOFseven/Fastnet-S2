@@ -222,6 +222,14 @@ async function desvincular(from) {
 
     delete entry.centralCode
     entry.autoAtivo = false
+    if (entry.pagamentoAuto && typeof entry.pagamentoAuto === 'object') {
+        entry.pagamentoAuto = {
+            ...entry.pagamentoAuto,
+            ativo: false,
+            desativadoEm: Date.now(),
+            atualizadoEm: Date.now()
+        }
+    }
     groups[key] = entry
     configManager.saveGroupConfig(true)
     removerVinculoRemoto(key)

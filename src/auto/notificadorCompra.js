@@ -54,12 +54,88 @@ function formatarListaItens(itens) {
         .join('\n')
 }
 
+function formatarMeticais(valor) {
+    return new Intl.NumberFormat('pt-MZ', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(Number(valor) || 0)
+}
+
+function formatarTelefone(numero) {
+    const digitos = String(numero || '').replace(/\D/g, '')
+    if (digitos.length === 9) return `+258 ${digitos.slice(0, 2)} ${digitos.slice(2, 5)} ${digitos.slice(5)}`
+    if (digitos.length === 12 && digitos.startsWith('258')) return `+${digitos}`
+    return digitos || 'Nao informado'
+}
+
+function formatarBlocoPagamento(compra) {
+    const p = compra?.pagamento
+    if (!p || typeof p !== 'object') return []
+    const linhas = ['', '*PAGAMENTO:*']
+    if (p.sistema) linhas.push(`Operadora: ${p.sistema}`)
+    linhas.push(`Valor: ${formatarMeticais(p.valor)} MT`)
+    if (p.pagadorNome) linhas.push(`Pagador: ${p.pagadorNome}`)
+    if (p.pagadorTelefone) linhas.push(`Telefone: ${formatarTelefone(p.pagadorTelefone)}`)
+    if (p.targetPhone) linhas.push(`Destino: ${formatarTelefone(p.targetPhone)}`)
+    if (p.txId) linhas.push(`Transacao: ${p.txId}`)
+    if (p.recebidoEm) linhas.push(`Recebido: ${formatarDataHora(new Date(p.recebidoEm))}`)
+    return linhas
+}
+
+const MOTIVOS_ALERTA_PAGAMENTO = {
+    sem_conteudo: 'SMS sem o campo Conteudo com o numero Vodacom.',
+    conteudo_invalido: 'O campo Conteudo nao contem um numero Vodacom valido.',
+    conteudo_multiplo: 'O campo Conteudo contem mais de um numero Vodacom.',
+    destino_ausente: 'O numero de destino assinado esta ausente ou invalido.',
+    destino_divergente: 'O numero do Conteudo nao corresponde ao destino assinado.',
+    saldo: 'O valor corresponde a saldo; o modo automatico entrega apenas dados.',
+    sem_pacote: 'Nao ha pacote de dados configurado para este valor.',
+    ambiguo: 'Ha mais de um pacote de dados possivel para este valor.',
+    valor_invalido: 'O valor do comprovativo e invalido.',
+    app_antigo: 'Comprovativo gravado por app antigo. Actualize o app para 2.3.28 ou superior.',
+    assinatura_invalida: 'Assinatura v2 invalida. O comprovativo nao sera usado.',
+    central_divergente: 'O comprovativo foi assinado para outro servidor.',
+    usado: 'Comprovativo ja utilizado.',
+    erro_compra: 'Falha ao criar a compra automatica.',
+    sem_transacao: 'Comprovativo sem identificador de transacao.'
+}
+
+function formatarAlertaPagamentoAuto({ motivo, oficial, conteudo, pacotes, pagador } = {}) {
+    const prefix = config.prefix || '.'
+    const dados = oficial || {}
+    const linhas = [
+        '*ALERTA - PAGAMENTO AUTOMATICO*',
+        '',
+        `Motivo: ${MOTIVOS_ALERTA_PAGAMENTO[motivo] || motivo || 'Erro desconhecido.'}`,
+        '',
+        `Transacao: ${dados.tx_id || 'Nao informada'}`,
+        `Operadora: ${dados.provider || 'Nao informada'}`,
+        `Valor: ${formatarMeticais(dados.amount_mt)} MT`,
+        `Pagador: ${pagador?.nome || dados.name || 'Nao identificado'}`,
+        `Telefone: ${formatarTelefone(pagador?.telefone || dados.phone)}`,
+        `Recebido: ${dados.timestamp ? formatarDataHora(new Date(Number(dados.timestamp))) : 'Nao informado'}`
+    ]
+
+    if (conteudo?.numeros?.length) linhas.push(`Conteudo: ${conteudo.numeros.join(', ')}`)
+    else if (conteudo?.numero) linhas.push(`Conteudo: ${conteudo.numero}`)
+    if (dados.target_phone) linhas.push(`Destino assinado: ${dados.target_phone}`)
+
+    if (Array.isArray(pacotes) && pacotes.length > 0) {
+        linhas.push('', '*PACOTES ENCONTRADOS:*')
+        for (const pacote of pacotes) linhas.push(`- ${pacote.gb || pacote.mb}MB (${formatarMeticais(pacote.preco)} MT)`)
+    }
+
+    linhas.push('', `_Resolva com \`${prefix}enviarauto <telefone> <mb>\`._`)
+    return linhas.join('\n')
+}
+
 function formatarPagamentoConfirmado(compra) {
     return [
         '✅ *PAGAMENTO CONFIRMADO*',
         '',
         '*A ENVIAR:*',
         formatarListaItens(compra.itens),
+        ...formatarBlocoPagamento(compra),
         '',
         `🧾 *PEDIDO:* #${compra.pedidoNumero}`,
         `🕒 *DATA:* ${formatarDataHora(new Date(compra.criadoEm || Date.now()))}`,
@@ -74,6 +150,7 @@ function formatarAguardando(compra, motivo) {
         '',
         '*A ENVIAR:*',
         formatarListaItens(compra.itens),
+        ...formatarBlocoPagamento(compra),
         '',
         `🧾 *PEDIDO:* #${compra.pedidoNumero}`,
         '',
@@ -211,6 +288,10 @@ async function enviarPagamentoConfirmado(sock, compra, opcoes = {}) {
     return enviarTexto(sock, compra.grupoId, formatarPagamentoConfirmado(compra), [], opcoes)
 }
 
+async function enviarAlertaPagamentoAuto(sock, grupoId, dados) {
+    return enviarTexto(sock, grupoId, formatarAlertaPagamentoAuto(dados))
+}
+
 async function enviarAguardando(sock, compra, motivo) {
     return enviarTexto(sock, compra.grupoId, formatarAguardando(compra, motivo))
 }
@@ -242,6 +323,10 @@ module.exports = {
     ehPacoteDados,
     limitesMensagensFinais,
     formatarDataHora,
+    formatarMeticais,
+    formatarTelefone,
+    formatarBlocoPagamento,
+    formatarAlertaPagamentoAuto,
     formatarPagamentoConfirmado,
     formatarAguardando,
     formatarParteEnviada,
@@ -250,6 +335,7 @@ module.exports = {
     formatarFalha,
     formatarCompraParcial,
     enviarPagamentoConfirmado,
+    enviarAlertaPagamentoAuto,
     enviarAguardando,
     enviarParte,
     enviarTransferenciaCompleta,

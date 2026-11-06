@@ -356,6 +356,13 @@ const verificacoesStore = createStore(
     { pendentes: {}, confianca: {} }
 )
 
+const pagamentosAutoStore = createStore(
+    'pagamentosAuto',
+    'bot_data/pagamentos_auto',
+    'data/pagamentosAuto.json',
+    { pagamentos: {} }
+)
+
 async function preloadAll() {
     const { FIREBASE_DB_URL } = require('./firebaseConfig')
     const start = Date.now()
@@ -381,7 +388,8 @@ async function preloadAll() {
             concorrentesStore.load(),
             manualCounterStore.load(),
             sessoesStore.load(),
-            verificacoesStore.load()
+            verificacoesStore.load(),
+            pagamentosAutoStore.load()
         ])
         console.log(`[STORAGE] 📁 Modo 100% Local ativo. Dados carregados da pasta ./data (${Date.now() - start}ms)`)
         return
@@ -407,7 +415,8 @@ async function preloadAll() {
         concorrentesStore.load(),
         manualCounterStore.load(),
         sessoesStore.load(),
-        verificacoesStore.load()
+        verificacoesStore.load(),
+        pagamentosAutoStore.load()
     ])
 
     const elapsed = Date.now() - start
@@ -469,6 +478,7 @@ module.exports = {
     concorrentesStore,
     avisosStore,
     verificacoesStore,
+    pagamentosAutoStore,
 
     preloadAll,
     claimGlobalMessage,

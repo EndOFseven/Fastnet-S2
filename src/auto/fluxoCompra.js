@@ -138,7 +138,9 @@ async function registrarPagamentoConfirmado(compra) {
             marcarReciboUsado(compra.codigo, {
                 valor: compra.valorTotal,
                 destino: compra.itens.map(i => i.numero).join(','),
-                por: compra.origem || 'compra-auto'
+                por: compra.origem || 'compra-auto',
+                origem: compra.origem || 'compra-auto',
+                sistema: compra.pagamento?.sistema || ''
             })
         } catch (err) {
             console.error('[COMPRA-AUTO] Falha ao marcar recibo:', err.message)
@@ -369,7 +371,7 @@ function tentarEnfileirarCompra(sock, compra) {
     return comLock(() => enfileirarCompraInterno(sock, compra))
 }
 
-async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPacote, codigo, ussdMethod, centralCode, origem, msgPagamentoKey }) {
+async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPacote, codigo, ussdMethod, centralCode, origem, msgPagamentoKey, pagamento }) {
     if (!from || !sender) return { ok: false, motivo: 'sem-cliente', erro: 'Compra sem cliente identificado.' }
     if (!centralCode) return { ok: false, motivo: 'sem-servidor', erro: 'Grupo sem servidor vinculado.' }
 
@@ -410,6 +412,7 @@ async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPa
         criadoEm: Date.now(),
         atualizadoEm: Date.now(),
         msgPagamentoKey: msgPagamentoKey || null,
+        pagamento: pagamento && typeof pagamento === 'object' ? pagamento : null,
         notificacoes: {}
     }
 

@@ -65,7 +65,7 @@ function sanitizeKey(k) {
 
 const recibosEmProcessamento = new Set()
 
-function iniciarProcessamentoRecibo(codigo) {
+function iniciarProcessamentoRecibo(codigo, provedorHint = null) {
     if (!codigo) return false
     const clean = String(codigo).trim().toUpperCase()
     if (clean.length < 6) return false
@@ -73,7 +73,7 @@ function iniciarProcessamentoRecibo(codigo) {
     if (recibosEmProcessamento.has(clean) || recibosEmProcessamento.has(codigo)) {
         return false
     }
-    if (reciboJaUsado(clean)) {
+    if (reciboJaUsado(clean, provedorHint)) {
         return false
     }
     recibosEmProcessamento.add(clean)

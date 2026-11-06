@@ -522,6 +522,12 @@ async function connectSocket() {
         console.error('[VERIF-SMS] Erro ao iniciar monitor:', e.message)
       }
 
+      try {
+        require('./src/vendas/monitorPagamentoAuto').iniciarMonitorPagamentoAuto(() => (global.sockConnected ? global.sock : null))
+      } catch (e) {
+        console.error('[PAGAMENTO-AUTO] Erro ao iniciar monitor:', e.message)
+      }
+
       if (typeof sock.uploadPreKeys === 'function') {
         sock.uploadPreKeys(50).then(() => {
           console.log('[PREKEYS] ✅ 50 novas pre-keys sincronizadas com o WhatsApp com sucesso.')
@@ -560,6 +566,7 @@ async function connectSocket() {
       messageQueue.flush()
       messageQueue.pause()
       try { require('./src/auto/monitor').pararMonitor() } catch {}
+      try { require('./src/vendas/monitorPagamentoAuto').pararMonitorPagamentoAuto() } catch {}
       if (pairingTimeout) {
         clearTimeout(pairingTimeout)
         pairingTimeout = null

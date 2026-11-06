@@ -43,6 +43,11 @@ async function menuAutoHandler(sock, msg, from, sender, text) {
         `▸ ${prefix}verificacao [firebase/manual/auto]`,
         `▸ ${prefix}confirmar CÓDIGO`,
         `▸ ${prefix}recusar CÓDIGO`,
+        '──────────────────',
+        '*PAGAMENTO AUTOMÁTICO E-MOLA*',
+        '',
+        `▸ ${prefix}pagamentoauto on/off/status`,
+        '_Usa o número Vodacom no campo Conteudo do SMS._',
         '──────────────────'
     ].join('\n')
 

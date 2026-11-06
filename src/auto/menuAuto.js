@@ -6,6 +6,7 @@ function montarSecaoAuto(prefix, opts = {}) {
     if (podeGerir) {
         if (vinculo.centralCode && vinculo.autoAtivo) {
             linhas.push(`📤 ${prefix}enviarauto <numero> <pacote>`)
+            linhas.push(`▸ ${prefix}pagamentoauto on/off`)
             linhas.push(`📡 ${prefix}envio massivo`)
             linhas.push(`📋 ${prefix}fila`)
             linhas.push(`🔌 ${prefix}desvincular`)
