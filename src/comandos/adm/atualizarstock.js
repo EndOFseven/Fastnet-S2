@@ -365,9 +365,10 @@ module.exports = async (sock, msg, from, sender, text) => {
     const raw = String(text || '').trim()
     const clean = raw.toLowerCase()
 
+    const stockMemoria = clean === pfx + 'stock memoria' || clean.startsWith(pfx + 'stock memoria ')
     const ehComando = clean === pfx + 'atualizarstock' || clean === pfx + 'atualizar stock' ||
         clean.startsWith(pfx + 'atualizarstock ') || clean.startsWith(pfx + 'atualizar stock ') ||
-        clean === pfx + 'stock' || clean.startsWith(pfx + 'stock ')
+        (!stockMemoria && (clean === pfx + 'stock' || clean.startsWith(pfx + 'stock ')))
     if (!ehComando) return false
 
     // Extrair parâmetros de forma flexível (suporta ".atualizarstock forcar", ".atualizar stock 1 forcar", etc)
