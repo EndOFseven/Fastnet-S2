@@ -366,7 +366,8 @@ module.exports = async (sock, msg, from, sender, text) => {
     const clean = raw.toLowerCase()
 
     const ehComando = clean === pfx + 'atualizarstock' || clean === pfx + 'atualizar stock' ||
-        clean.startsWith(pfx + 'atualizarstock ') || clean.startsWith(pfx + 'atualizar stock ')
+        clean.startsWith(pfx + 'atualizarstock ') || clean.startsWith(pfx + 'atualizar stock ') ||
+        clean === pfx + 'stock' || clean.startsWith(pfx + 'stock ')
     if (!ehComando) return false
 
     // Extrair parâmetros de forma flexível (suporta ".atualizarstock forcar", ".atualizar stock 1 forcar", etc)
@@ -374,7 +375,7 @@ module.exports = async (sock, msg, from, sender, text) => {
     const resto = []
     for (let i = 0; i < tokens.length; i++) {
         const t = tokens[i].toLowerCase()
-        if (i === 0 && (t === 'atualizarstock' || t === 'atualizar')) continue
+        if (i === 0 && (t === 'atualizarstock' || t === 'atualizar' || t === 'stock')) continue
         if (i === 1 && tokens[0].toLowerCase() === 'atualizar' && t === 'stock') continue
         resto.push(tokens[i])
     }
