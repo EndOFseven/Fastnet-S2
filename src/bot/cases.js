@@ -226,11 +226,17 @@ module.exports = async function (sock, msg) {
         `❌ \`.recusar ${codigo}\` _(comprovativo inválido)_`
       ].join('\n')
 
+      let cardKey = null
       try {
-        await sock.sendMessage(from, { text: texto, mentions: [clienteJid] }, { quoted: msg })
+        const enviada = await sock.sendMessage(from, { text: texto, mentions: [clienteJid] }, { quoted: msg })
+        cardKey = enviada?.key || null
       } catch {
-        await sock.sendMessage(from, { text: texto })
+        try {
+          const enviada = await sock.sendMessage(from, { text: texto })
+          cardKey = enviada?.key || null
+        } catch {}
       }
+      if (cardKey) verificacao.atualizarPendente(codigo, { cardKey })
       await reactMsg('⏳')
     } catch (err) {
       console.error('[VERIFICACAO] Erro ao segurar comprovativo:', err.message)

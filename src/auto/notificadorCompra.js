@@ -177,8 +177,23 @@ function formatarCompraParcial(compra) {
     ].join('\n')
 }
 
-async function enviarTexto(sock, grupoId, texto, mencoes = []) {
+async function enviarTexto(sock, grupoId, texto, mencoes = [], opcoes = {}) {
     if (!sock || !grupoId || !texto) return false
+    const editKey = opcoes.editKey
+    if (editKey && editKey.id) {
+        try {
+            await sock.sendMessage(grupoId, {
+                text: texto,
+                ...(mencoes.length ? { mentions: mencoes } : {}),
+                edit: {
+                    id: editKey.id,
+                    remoteJid: editKey.remoteJid || grupoId,
+                    fromMe: editKey.fromMe !== false
+                }
+            })
+            return true
+        } catch {}
+    }
     try {
         await sock.sendMessage(grupoId, { text: texto, ...(mencoes.length ? { mentions: mencoes } : {}) })
         return true
@@ -192,8 +207,8 @@ async function enviarTexto(sock, grupoId, texto, mencoes = []) {
     }
 }
 
-async function enviarPagamentoConfirmado(sock, compra) {
-    return enviarTexto(sock, compra.grupoId, formatarPagamentoConfirmado(compra))
+async function enviarPagamentoConfirmado(sock, compra, opcoes = {}) {
+    return enviarTexto(sock, compra.grupoId, formatarPagamentoConfirmado(compra), [], opcoes)
 }
 
 async function enviarAguardando(sock, compra, motivo) {

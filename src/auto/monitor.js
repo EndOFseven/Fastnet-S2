@@ -154,11 +154,26 @@ function ehPacoteNormalCompra(pedido) {
     return Boolean(pedido?.compraId) && notificador.ehPacoteDados(pedido)
 }
 
+function identificacaoPedido(pedido) {
+    const numero = Number(pedido?.numero)
+    let referencia = ''
+    if (Number.isFinite(numero) && numero > 0) {
+        referencia = `#${numero}`
+    } else {
+        const id = String(pedido?.id || '')
+        const encontrado = id.match(/^PED-(\d+)/i)
+        referencia = encontrado ? `#${encontrado[1]}` : (id || 'N/A')
+    }
+    const parte = Math.max(0, parseInt(pedido?.parte, 10) || 0)
+    const totalPartes = Math.max(0, parseInt(pedido?.totalPartes, 10) || 0)
+    const detalhe = parte > 0 && totalPartes > 1 ? ` (parte ${parte}/${totalPartes})` : ''
+    return `PEDIDO: *${referencia}${detalhe}*`
+}
+
 function formatarCardAntigo(pedido, status, remoto) {
     const st = String(status || pedido?.status || '').toUpperCase()
     if (st === 'PENDENTE' || !st) return null
 
-    const id = pedido?.id || 'N/A'
     const cliente = formatarTelefone(pedido?.clientePhone)
     const pacote = formatarPacote(pedido || {})
     const chip = obterNomeChip(pedido, remoto)
@@ -168,7 +183,7 @@ function formatarCardAntigo(pedido, status, remoto) {
         return [
             '⚡ *PEDIDO EM ANDAMENTO*',
             '────────────────────────',
-            `🧾 ID: *${id}*`,
+            `🧾 ${identificacaoPedido(pedido)}`,
             `📱 Cliente: ${cliente}`,
             `📦 Pacote: ${pacote}`,
             ...linhaChip,
@@ -182,7 +197,7 @@ function formatarCardAntigo(pedido, status, remoto) {
         const linhas = [
             '✅ *PEDIDO CONCLUÍDO COM ÊXITO*',
             '────────────────────────',
-            `🧾 ID: *${id}*`,
+            `🧾 ${identificacaoPedido(pedido)}`,
             `📱 Cliente: ${cliente}`,
             `📦 Pacote: ${pacote}`,
             ...linhaChip
@@ -196,7 +211,7 @@ function formatarCardAntigo(pedido, status, remoto) {
         const linhas = [
             '❌ *PEDIDO SEM ÊXITO*',
             '────────────────────────',
-            `🧾 ID: *${id}*`,
+            `🧾 ${identificacaoPedido(pedido)}`,
             `📱 Cliente: ${cliente}`,
             `📦 Pacote: ${pacote}`,
             `⚠️ Estado: *${st}*`
@@ -213,7 +228,7 @@ function formatarCardAntigo(pedido, status, remoto) {
         return [
             '⚠️ *PEDIDO EXPIRADO*',
             '────────────────────────',
-            `🧾 ID: *${id}*`,
+            `🧾 ${identificacaoPedido(pedido)}`,
             `📱 Cliente: ${cliente}`,
             `📦 Pacote: ${pacote}`,
             '',
@@ -225,7 +240,7 @@ function formatarCardAntigo(pedido, status, remoto) {
         return [
             '⚠️ *PEDIDO APAGADO NO SERVIDOR*',
             '────────────────────────',
-            `🧾 ID: *${id}*`,
+            `🧾 ${identificacaoPedido(pedido)}`,
             `📱 Cliente: ${cliente}`,
             `📦 Pacote: ${pacote}`,
             '',

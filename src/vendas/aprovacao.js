@@ -73,7 +73,8 @@ async function aprovarPendente(sock, pendente, opts = {}) {
                     codigo: pendente.codigo,
                     ussdMethod: pendente.ussdMethod || '*162#',
                     centralCode,
-                    origem: opts.por || 'sms-oficial'
+                    origem: opts.por || 'sms-oficial',
+                    msgPagamentoKey: pendente.cardKey || null
                 })
             } catch (err) {
                 console.error('[APROVACAO] Falha ao criar compra automática:', err.message)

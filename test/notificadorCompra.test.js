@@ -36,6 +36,25 @@ test('mensagem de pagamento confirmado tem valor total e pedido', () => {
     assert.match(texto, /PEDIDO:\* #4814/)
 })
 
+test('pagamento confirmado edita o card de conferencia existente', async () => {
+    const chamadas = []
+    const sock = {
+        sendMessage: async (grupoId, payload) => {
+            chamadas.push({ grupoId, payload })
+            return { key: { id: 'novo-card' } }
+        }
+    }
+
+    const ok = await notificador.enviarPagamentoConfirmado(sock, compra, {
+        editKey: { id: 'card-conferencia', remoteJid: compra.grupoId, fromMe: true }
+    })
+
+    assert.equal(ok, true)
+    assert.equal(chamadas.length, 1)
+    assert.equal(chamadas[0].payload.edit.id, 'card-conferencia')
+    assert.match(chamadas[0].payload.text, /PAGAMENTO CONFIRMADO/)
+})
+
 test('progresso mostra parte e partes em falta', () => {
     const texto = notificador.formatarParteEnviada(compra, compra.partes[0])
     assert.match(texto, /1\/3 parte enviada/)

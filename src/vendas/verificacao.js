@@ -75,6 +75,17 @@ function salvarPendente(dados = {}) {
     return entrada
 }
 
+function atualizarPendente(codigo, dados = {}) {
+    if (!codigo) return null
+    const data = load()
+    const key = chaveCodigo(codigo)
+    const atual = data.pendentes[key]
+    if (!atual) return null
+    data.pendentes[key] = { ...atual, ...dados, codigo: atual.codigo, codigoKey: key }
+    verificacoesStore.save(data)
+    return data.pendentes[key]
+}
+
 function buscarPendente(groupId, codigo) {
     if (!codigo) return null
     const data = load()
@@ -126,6 +137,7 @@ module.exports = {
     setModo,
     textoMotivos,
     salvarPendente,
+    atualizarPendente,
     buscarPendente,
     removerPendente,
     listarPendentes,

@@ -355,7 +355,7 @@ async function enfileirarCompraInterno(sock, compra) {
     salvarEntregasCompra(compra)
 
     if (!compra.notificacoes.pagamento) {
-        const enviou = await notificador.enviarPagamentoConfirmado(sock, compra)
+        const enviou = await notificador.enviarPagamentoConfirmado(sock, compra, { editKey: compra.msgPagamentoKey })
         if (enviou) {
             compra.notificacoes.pagamento = true
             salvarCompra(compra)
@@ -369,7 +369,7 @@ function tentarEnfileirarCompra(sock, compra) {
     return comLock(() => enfileirarCompraInterno(sock, compra))
 }
 
-async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPacote, codigo, ussdMethod, centralCode, origem }) {
+async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPacote, codigo, ussdMethod, centralCode, origem, msgPagamentoKey }) {
     if (!from || !sender) return { ok: false, motivo: 'sem-cliente', erro: 'Compra sem cliente identificado.' }
     if (!centralCode) return { ok: false, motivo: 'sem-servidor', erro: 'Grupo sem servidor vinculado.' }
 
@@ -409,6 +409,7 @@ async function criarCompra({ sock, from, sender, nome, itens, valorTotal, tipoPa
         partesEnviadas: 0,
         criadoEm: Date.now(),
         atualizadoEm: Date.now(),
+        msgPagamentoKey: msgPagamentoKey || null,
         notificacoes: {}
     }
 
