@@ -98,8 +98,8 @@ function formatarCardPedido(pedido, status, remoto) {
         `⚡ *FASTNET AUTO | PEDIDO ${numDisplay}*`,
         '┌────────────────────────',
         `│ 🧾 #PEDIDO: *${numDisplay}*`,
-        `│ 📱 Destino: *${cliente}*`,
-        `│ 📦 Quantidade: *${pacote}*`
+        `│ 🎯 Destino: *${cliente}*`,
+        `│ 🎁 Quantidade: *${pacote}*`
     ]
 
     if (valorNum > 0) {
@@ -107,9 +107,6 @@ function formatarCardPedido(pedido, status, remoto) {
     }
     if (chip) {
         linhas.push(`│ 📶 Linha: *${chip}*`)
-    }
-    if (pedido?.referenciaRecibo) {
-        linhas.push(`│ 📋 Recibo: *${pedido.referenciaRecibo}*`)
     }
 
     linhas.push('└────────────────────────')
@@ -154,101 +151,10 @@ function ehPacoteNormalCompra(pedido) {
     return Boolean(pedido?.compraId) && notificador.ehPacoteDados(pedido)
 }
 
-function identificacaoPedido(pedido) {
-    const numero = Number(pedido?.numero)
-    let referencia = ''
-    if (Number.isFinite(numero) && numero > 0) {
-        referencia = `#${numero}`
-    } else {
-        const id = String(pedido?.id || '')
-        const encontrado = id.match(/^PED-(\d+)/i)
-        referencia = encontrado ? `#${encontrado[1]}` : (id || 'N/A')
-    }
-    const parte = Math.max(0, parseInt(pedido?.parte, 10) || 0)
-    const totalPartes = Math.max(0, parseInt(pedido?.totalPartes, 10) || 0)
-    const detalhe = parte > 0 && totalPartes > 1 ? ` (parte ${parte}/${totalPartes})` : ''
-    return `PEDIDO: *${referencia}${detalhe}*`
-}
-
 function formatarCardAntigo(pedido, status, remoto) {
     const st = String(status || pedido?.status || '').toUpperCase()
     if (st === 'PENDENTE' || !st) return null
-
-    const cliente = formatarTelefone(pedido?.clientePhone)
-    const pacote = formatarPacote(pedido || {})
-    const chip = obterNomeChip(pedido, remoto)
-    const linhaChip = chip ? [`📶 Chip: *${chip}*`] : []
-
-    if (st === 'PROCESSANDO') {
-        return [
-            '⚡ *PEDIDO EM ANDAMENTO*',
-            '────────────────────────',
-            `🧾 ${identificacaoPedido(pedido)}`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            ...linhaChip,
-            '',
-            '_O app acatou o pedido e já está a enviar por USSD._'
-        ].join('\n')
-    }
-
-    if (st === 'SUCESSO' || st === 'CONCLUIDO') {
-        const resposta = limparTextoResposta(remoto?.ussdResponseText)
-        const linhas = [
-            '✅ *PEDIDO CONCLUÍDO COM ÊXITO*',
-            '────────────────────────',
-            `🧾 ${identificacaoPedido(pedido)}`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            ...linhaChip
-        ]
-        if (resposta) linhas.push('', `💬 ${resposta.slice(0, 300)}`)
-        return linhas.join('\n')
-    }
-
-    if (st === 'FALHA' || st === 'CANCELADO') {
-        const motivo = limparTextoResposta(remoto?.motivoErro || remoto?.erro || remoto?.ussdResponseText)
-        const linhas = [
-            '❌ *PEDIDO SEM ÊXITO*',
-            '────────────────────────',
-            `🧾 ${identificacaoPedido(pedido)}`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            `⚠️ Estado: *${st}*`
-        ]
-        if (motivo) linhas.push('', `💬 ${motivo.slice(0, 300)}`)
-        linhas.push('', '_Confira o app e envie outra vez se for preciso._')
-        return linhas.join('\n')
-    }
-
-    if (st === 'EXPIRADO') {
-        const minutos = Math.max(1, Math.round(
-            (Number(pedido?.timeoutPendenteMs) || TIMEOUT_PENDENTE_MS) / 60000
-        ))
-        return [
-            '⚠️ *PEDIDO EXPIRADO*',
-            '────────────────────────',
-            `🧾 ${identificacaoPedido(pedido)}`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            '',
-            `_O app não aceitou o pedido dentro de ${minutos} minutos. Confira a ligação do servidor e envie de novo._`
-        ].join('\n')
-    }
-
-    if (st === 'DESAPARECIDO') {
-        return [
-            '⚠️ *PEDIDO APAGADO NO SERVIDOR*',
-            '────────────────────────',
-            `🧾 ${identificacaoPedido(pedido)}`,
-            `📱 Cliente: ${cliente}`,
-            `📦 Pacote: ${pacote}`,
-            '',
-            '_O pedido já não consta na fila do Firebase. Envie outra vez se o cliente ainda aguarda._'
-        ].join('\n')
-    }
-
-    return null
+    return formatarCardPedido(pedido, status, remoto)
 }
 
 function registrarVendaAuto(pedido) {
