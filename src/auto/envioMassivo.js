@@ -242,7 +242,6 @@ async function iniciarLoteInterno({ sock, from, sender, texto, centralCode }) {
         parte.slot = atribuicao.slot
         parte.simNome = atribuicao.simNome
         parte.mbEnvio = atribuicao.mbEnvio
-        parte.ajuste10 = atribuicao.ajuste10
         parte.id = `MASS-${id.replace(/^LOTE-/, '')}-${indice + 1}`
     })
 
@@ -324,7 +323,6 @@ function atualizarParteReatribuida(pedidoId, dados) {
     if (Number.isInteger(dados.slot)) parte.slot = dados.slot
     if (dados.simNome) parte.simNome = dados.simNome
     if (Number.isFinite(Number(dados.mbEnvio))) parte.mbEnvio = Number(dados.mbEnvio)
-    if (Number.isFinite(Number(dados.ajuste10))) parte.ajuste10 = Number(dados.ajuste10)
     parte.reatribuidoEm = Date.now()
     lote.atualizadoEm = Date.now()
     salvarLote(lote)

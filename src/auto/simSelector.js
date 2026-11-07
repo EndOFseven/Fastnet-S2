@@ -314,17 +314,10 @@ function distribuirPartes(partes, capacidade) {
         }
 
         let escolhido = null
-        let ajuste10 = 0
-        let mbEnvio = parte
 
         for (const candidato of candidatos) {
-            const indiceNaSim = candidato.usado + candidato.ativos + candidato.atribuidas
-            const ajuste = indiceNaSim === 9 ? 2 : 0
-            const envio = parte + ajuste
-            if (candidato.estoqueMb >= envio) {
+            if (candidato.estoqueMb >= parte) {
                 escolhido = candidato
-                ajuste10 = ajuste
-                mbEnvio = envio
                 break
             }
         }
@@ -338,7 +331,7 @@ function distribuirPartes(partes, capacidade) {
         }
 
         escolhido.restantes -= 1
-        escolhido.estoqueMb -= mbEnvio
+        escolhido.estoqueMb -= parte
         escolhido.atribuidas += 1
 
         atribuicoes.push({
@@ -347,8 +340,7 @@ function distribuirPartes(partes, capacidade) {
             slot: escolhido.slot,
             simNome: escolhido.nome,
             mb: parte,
-            mbEnvio,
-            ajuste10,
+            mbEnvio: parte,
             indiceNaSim: escolhido.usado + escolhido.ativos + escolhido.atribuidas - 1
         })
     }

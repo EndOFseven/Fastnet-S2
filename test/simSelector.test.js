@@ -25,11 +25,21 @@ test('20 partes ficam 10 por chip', () => {
     assert.deepEqual(porSlot, { 0: 10, 1: 10 })
 })
 
-test('10.º envio de cada chip leva +2MB', () => {
+test('10.º envio de cada chip usa exactamente o valor pedido', () => {
     const resultado = distribuirPartes(Array(20).fill(10240), capacidade())
-    const decimos = resultado.atribuicoes.filter(a => a.ajuste10 === 2)
-    assert.equal(decimos.length, 2)
-    assert.ok(decimos.every(a => a.mbEnvio === 10242))
+    assert.ok(resultado.atribuicoes.every(a => a.mbEnvio === 10240))
+    assert.ok(resultado.atribuicoes.every(a => a.ajuste10 === undefined))
+})
+
+test('100MB no 10.º envio continua 100MB', () => {
+    const cap = capacidade()
+    cap.sims[0].usado = 9
+    cap.sims[0].restantes = 1
+    cap.sims[1].restantes = 0
+    const resultado = distribuirPartes([100], cap)
+    assert.equal(resultado.ok, true)
+    assert.equal(resultado.atribuicoes[0].slot, 0)
+    assert.equal(resultado.atribuicoes[0].mbEnvio, 100)
 })
 
 test('reserva pedidos antigos sem chip definido', () => {
@@ -113,7 +123,7 @@ test('papéis de pagamento e saldo ficam fora do envio de megas', () => {
     assert.equal(cap.motivo, 'sem-telemetria')
 })
 
-test('20 partes usam 10 envios por celular e o 10.º de cada um leva +2MB', () => {
+test('20 partes usam 10 envios por celular sem alterar os MB', () => {
     const agora = Date.now()
     const simData = {
         A: { sim1: sim(204800), heartbeat: agora },
@@ -131,9 +141,8 @@ test('20 partes usam 10 envios por celular e o 10.º de cada um leva +2MB', () =
         return acc
     }, {})
     assert.deepEqual(porDispositivo, { A: 10, B: 10 })
-    const decimos = resultado.atribuicoes.filter(a => a.ajuste10 === 2)
-    assert.equal(decimos.length, 2)
-    assert.ok(decimos.every(a => a.mbEnvio === 10242))
+    assert.ok(resultado.atribuicoes.every(a => a.mbEnvio === 10240))
+    assert.ok(resultado.atribuicoes.every(a => a.ajuste10 === undefined))
 })
 
 test('reassentamento usa a parte exibida e nunca envia acima de 10240', () => {
